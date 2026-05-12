@@ -1,0 +1,205 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                    Int            @id @default(autoincrement())
+  nombre                String
+  apellido              String
+  cargo                 String
+  jefe_directo          String?
+  area_id               Int?
+  email                 String         @unique
+  password              String
+  debe_cambiar_password Boolean        @default(false)
+  is_admin              Boolean        @default(false)
+  
+  // Permisos de Tareas
+  can_create_tasks      Boolean        @default(false)
+  can_edit_tasks        Boolean        @default(false)
+  can_delete_tasks      Boolean        @default(false)
+  
+  // --- NUEVOS PERMISOS DE SUBTAREAS ---
+  perm_subtasks_view    Boolean        @default(false)
+  perm_subtasks_create  Boolean        @default(false)
+  perm_subtasks_edit    Boolean        @default(false)
+  perm_subtasks_delete  Boolean        @default(false)
+  
+// Permisos de Supervisión
+  acceso_supervision    Boolean        @default(false)
+  areas_autorizadas     String?
+  perm_control_edit     Boolean        @default(false) // <--- ESTA ES LA LÍNEA QUE FALTABA
+  
+  
+  
+  // Permisos de Módulos
+  perm_users_view       Boolean        @default(false)
+  perm_users_create     Boolean        @default(false)
+  perm_users_edit       Boolean        @default(false)
+  perm_users_delete     Boolean        @default(false)
+  
+  perm_areas_view       Boolean        @default(false)
+  perm_areas_create     Boolean        @default(false)
+  perm_areas_edit       Boolean        @default(false)
+  perm_areas_delete     Boolean        @default(false)
+  
+  // --- NUEVO CAMPO ---
+  perm_reports_view     Boolean        @default(false)
+
+  // Permisos de Proyectos
+  perm_projects_view    Boolean        @default(false)
+  perm_projects_create  Boolean        @default(false)
+  perm_projects_edit    Boolean        @default(false)
+  perm_projects_delete  Boolean        @default(false)
+  
+  // Relaciones
+  area                  Area?          @relation("AreaUsers", fields: [area_id], references: [id])
+  managedAreas          Area[]         @relation("AreaManager")
+  createdTasks          Task[]         @relation("CreatedTasks")
+  notifications         Notification[]
+  auditLogs             AuditLog[]
+  comments              Comment[]
+  managedProjects       Project[]      @relation("ProjectLeader") 
+}
+
+model Area {
+  id              Int     @id @default(autoincrement())
+  nombre          String
+  descripcion     String?
+  jefe_id         Int?    
+  parent_area_id  Int?
+  
+  // Relaciones
+  jefe            User?   @relation("AreaManager", fields: [jefe_id], references: [id])
+  parentArea      Area?   @relation("AreaHierarchy", fields: [parent_area_id], references: [id])
+  subAreas        Area[]  @relation("AreaHierarchy")
+  users           User[]  @relation("AreaUsers")
+}
+
+model Task {
+  id                Int          @id @default(autoincrement())
+  actividad         String
+  responsable       String
+  fecha_registro    String
+  fecha_inicio      String
+  fecha_fin         String
+  fecha_ejecucion   String?
+  prioridad         String
+  prerequisito      String?
+  observacion       String?
+  cliente           String?
+  porcentaje_avance Int          @default(0)
+  estado            String       @default("Pendiente")
+  created_by_id     Int
+  
+  // --- CAMPOS NUEVOS (Mapeo de Excel) ---
+  area_origen_id         Int?
+  gerente_responsable    String?
+  tipo                   String?
+  tematica               String?
+  compromiso_semanal     String?
+  requiere_inversion     Boolean        @default(false)
+  alineacion_estrategica String?
+  impacto                String?
+  viabilidad_tecnica     String?
+  calificacion           String?
+  orden_ejecucion        Int?
+  
+  // Relación con Proyectos
+  proyecto_id       Int?
+  project           Project?       @relation(fields: [proyecto_id], references: [id])
+  
+  // Relaciones
+  creator           User           @relation("CreatedTasks", fields: [created_by_id], references: [id])
+  attachments       Attachment[]
+  auditLogs         AuditLog[]
+  comments          Comment[]
+  notifications     Notification[] 
+  subtasks          Subtask[]      // <-- AGREGA ESTA LÍNEA
+}
+
+model Notification {
+  id         Int       @id @default(autoincrement())
+  user_id    Int
+  message    String
+  type       String    @default("INFO") // Puede ser: INFO, SUCCESS, WARNING, CRITICAL
+  read       Boolean   @default(false)
+  readAt     DateTime? // Fecha exacta en que se leyó
+  task_id    Int?
+  created_at DateTime  @default(now())
+  
+  user       User      @relation(fields: [user_id], references: [id])
+  task       Task?     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id          Int      @id @default(autoincrement())
+  task_id     Int
+  filename    String
+  filepath    String
+  uploaded_at DateTime @default(now())
+  
+  task        Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  task_id    Int
+  user_id    Int
+  action     String
+  details    String
+  created_at DateTime @default(now())
+  
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id])
+}
+
+
+
+model Comment {
+  id         Int      @id @default(autoincrement())
+  task_id    Int
+  user_id    Int
+  subtask_id Int?     // <-- ESTA ES LA LÍNEA QUE FALTABA
+  content    String
+  created_at DateTime @default(now())
+
+  task       Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [user_id], references: [id])
+  subtask    Subtask? @relation(fields: [subtask_id], references: [id], onDelete: SetNull)
+}
+
+// --- MODELO DE PROYECTOS ---
+model Project {
+  id           Int      @id @default(autoincrement())
+  nombre       String
+  descripcion  String?
+  estado       String   @default("Activo")
+  fecha_inicio String?
+  fecha_fin    String?
+  lider_id     Int?
+  
+  // --- NUEVO CAMPO ---
+  prioritario  Boolean  @default(false)
+  
+  lider        User?    @relation("ProjectLeader", fields: [lider_id], references: [id])
+  tasks        Task[]
+}
+
+// Agrega este NUEVO MODELO al final de tu archivo schema.prisma
+model Subtask {
+  id          Int      @id @default(autoincrement())
+  titulo      String
+  completada  Boolean  @default(false)
+  task_id     Int
+  created_at  DateTime @default(now())
+
+  // Relación con borrado en cascada (si borras la tarea, se borran sus subtareas)
+  task        Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  comments    Comment[] // <-- AGREGA ESTA LÍNEA
+}

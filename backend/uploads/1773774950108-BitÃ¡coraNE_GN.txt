@@ -1,0 +1,8 @@
+Algunos comprobantes presentan errores en sus datos, por lo cual no pueden participar en el envío:
+Empleado: 1045678017 Tipo XML: Individual
+- El campo Trabajador - PrimerNombre (NIE048) no debe enviarse vacío.
+Empleado: 1140850776 Tipo XML: Individual
+- El campo Trabajador - PrimerApellido (NIE046) no debe enviarse vacío.
+- El campo Trabajador - PrimerNombre (NIE048) no debe enviarse vacío.
+Empleado: 1143140064 Tipo XML: Individual
+- El campo Trabajador - PrimerNombre (NIE048) no debe enviarse vacío.

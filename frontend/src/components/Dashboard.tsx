@@ -1,0 +1,2327 @@
+import React, { useState, useEffect } from 'react';
+import { Task, Priority, Status, Area, User } from './types';
+import { 
+  Plus, Search, Filter, Edit2, Trash2, ChevronDown, CheckCircle2,
+  Clock, AlertCircle, Calendar, User as UserIcon, Building2,
+  FileText, Users, LayoutDashboard, Settings, X, Shield,
+  LogOut, Bell, Eye, MessageSquare, Paperclip, History,
+  Download, Upload, FolderKanban, CheckSquare, Square, ListChecks,
+  PieChart as PieChartIconLucide, TrendingUp, Activity, FilterX, Lock, Columns,
+  PlayCircle, Reply, Tag 
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
+
+export interface Project {
+  id?: number;
+  nombre: string;
+  descripcion?: string;
+  estado: string;
+  fecha_inicio?: string;
+  fecha_fin?: string;
+  lider_id?: number; 
+  prioritario?: boolean; 
+}
+
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+  let [resource, config] = args;
+  if (typeof resource !== 'string') return originalFetch(resource, config);
+  if (resource.includes('/api/me')) {
+    const localUser = localStorage.getItem('user');
+    return new Response(localUser !== 'undefined' ? localUser : null, { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+  if (resource.startsWith('/api')) {
+    config = config || {};
+    const isFormData = config.body instanceof FormData; 
+    config.headers = {
+      ...config.headers,
+      'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }) 
+    };
+  }
+  return originalFetch(resource, config);
+};
+
+const getPriorityColor = (p: string) => {
+  const str = String(p || '').toUpperCase();
+  if (str.includes('MUY ALTA')) return 'bg-red-100 text-red-700 border-red-200';
+  if (str.includes('ALTA')) return 'bg-orange-100 text-orange-700 border-orange-200';
+  if (str.includes('MEDIA')) return 'bg-blue-100 text-blue-700 border-blue-200';
+  if (str.includes('MUY BAJA')) return 'bg-slate-50 text-slate-500 border-slate-100';
+  if (str.includes('BAJA')) return 'bg-slate-100 text-slate-700 border-slate-200';
+  return 'bg-slate-100 text-slate-500 border-slate-200';
+};
+
+const getPriorityLabel = (p: string) => {
+  const str = String(p || '');
+  if (str.toUpperCase().includes('MUY ALTA')) return 'Muy Alta';
+  if (str.toUpperCase().includes('ALTA')) return 'Alta';
+  if (str.toUpperCase().includes('MEDIA')) return 'Media';
+  if (str.toUpperCase().includes('MUY BAJA')) return 'Muy Baja';
+  if (str.toUpperCase().includes('BAJA')) return 'Baja';
+  return str.includes('|') ? str.split('|')[1] : str;
+};
+
+const getStatusColor = (s: string) => {
+  const str = String(s || '').toUpperCase();
+  if (str.includes('PLANEADO')) return 'bg-slate-100 text-slate-600';
+  if (str.includes('EN CURSO')) return 'bg-blue-100 text-blue-600';
+  if (str.includes('EN ESPERA')) return 'bg-amber-100 text-amber-700';
+  if (str.includes('COMPLETADO') || str.includes('FINALIZADO')) return 'bg-emerald-100 text-emerald-700';
+  if (str.includes('CANCELADO')) return 'bg-red-100 text-red-700';
+  return 'bg-slate-100 text-slate-600';
+};
+
+const getChartColor = (p: string) => {
+  const str = String(p || '').toUpperCase();
+  if (str.includes('MUY ALTA')) return '#ef4444';
+  if (str.includes('ALTA')) return '#f97316';
+  if (str.includes('MEDIA')) return '#3b82f6';
+  return '#94a3b8';
+};
+
+const getProgressBarColor = (percent: number) => {
+  if (percent < 35) return 'bg-red-500';
+  if (percent < 75) return 'bg-amber-500';
+  return 'bg-emerald-500';
+};
+
+const getProgressTextColor = (percent: number) => {
+  if (percent < 35) return 'text-red-600';
+  if (percent < 75) return 'text-amber-600';
+  return 'text-emerald-600';
+};
+
+const getDaysOverdue = (endDateStr: string, status: string) => {
+  try {
+    if (!endDateStr || typeof endDateStr !== 'string' || status === 'Completado' || status === 'Finalizado' || status === 'Cancelado') return 0; 
+    const parts = endDateStr.split('-');
+    if (parts.length !== 3) return 0;
+    const [year, month, day] = parts.map(Number);
+    const end = new Date(year, month - 1, day);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (today > end) {
+      const diffTime = today.getTime() - end.getTime();
+      return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    }
+    return 0;
+  } catch (e) { return 0; }
+};
+
+const ChartsSection = ({ data }: { data: any[] }) => {
+  const pieData = [
+    { name: 'Planeado', value: data.filter(t => t.estado === 'Planeado').length, color: '#94a3b8' },
+    { name: 'En curso', value: data.filter(t => t.estado === 'En curso').length, color: '#3b82f6' },
+    { name: 'En espera', value: data.filter(t => t.estado === 'En espera').length, color: '#f59e0b' },
+    { name: 'Completado', value: data.filter(t => t.estado === 'Completado').length, color: '#10b981' }
+  ].filter(d => d.value > 0);
+
+  const priorityStats = ['0|Muy Alta', '1|Alta', '2|Media', '3|Baja', '4|Muy Baja'].map(p => {
+    const targetLabel = getPriorityLabel(p); 
+    const t = data.filter(task => getPriorityLabel(task.prioridad) === targetLabel);
+    const avg = t.length > 0 ? t.reduce((acc, curr) => acc + (Number(curr.porcentaje_avance) || 0), 0) / t.length : 0;
+    return { name: targetLabel, Avance: Math.round(avg), count: t.length, fill: getChartColor(p) };
+  }).filter(stat => stat.count > 0); 
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 mb-6">
+          <PieChartIcon size={16} className="text-slate-400"/>
+          <span className="text-sm font-bold text-slate-900">Distribución por Estado</span>
+        </div>
+        <div className="h-64 flex items-center justify-center">
+          {pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pieData} innerRadius={70} outerRadius={90} paddingAngle={5} dataKey="value">
+                  {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : <span className="text-slate-400 text-sm">No hay datos para graficar</span>}
+        </div>
+      </div>
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 mb-6">
+          <BarChart3 size={16} className="text-slate-400"/>
+          <span className="text-sm font-bold text-slate-900">Avance Promedio según Prioridad</span>
+        </div>
+        <div className="h-64">
+          {priorityStats.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={priorityStats} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
+                <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                <Tooltip cursor={{ fill: '#f1f5f9' }} />
+                <Bar dataKey="Avance" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                  {priorityStats.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          ) : <div className="h-full flex items-center justify-center"><span className="text-slate-400 text-sm">No hay datos para graficar</span></div>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type View = 'tasks' | 'users' | 'areas' | 'control' | 'projects' | 'reports'; 
+type DetailsTab = 'comments' | 'attachments' | 'subtasks';
+
+export default function App() {
+  const [currentView, setCurrentView] = useState<View>('tasks');
+  const [taskTab, setTaskTab] = useState<'personal' | 'team'>('personal');
+  const [taskDisplayMode, setTaskDisplayMode] = useState<'list' | 'kanban'>('list');
+  const [showImportMenu, setShowImportMenu] = useState(false);
+  
+  const [showColumnManager, setShowColumnManager] = useState(false);
+  const defaultTableCols = [
+    { id: 'orden', label: 'Orden', visible: true },
+    { id: 'actividad', label: 'Actividad', visible: true },
+    { id: 'proyecto', label: 'Proyecto', visible: true },
+    { id: 'compromiso', label: 'Compromiso', visible: true },
+    { id: 'avance', label: 'Avance', visible: true },
+    { id: 'estado', label: 'Estado', visible: true },
+    { id: 'responsable', label: 'Responsable(s)', visible: true },
+    { id: 'acciones', label: 'Acciones', visible: true }
+  ];
+  const [tableCols, setTableCols] = useState(() => {
+    try {
+      const saved = localStorage.getItem('taskFlow_columns');
+      return saved ? JSON.parse(saved) : defaultTableCols;
+    } catch (e) { return defaultTableCols; }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('taskFlow_columns', JSON.stringify(tableCols));
+  }, [tableCols]);
+
+  const moveColumn = (index: number, direction: 'up' | 'down') => {
+    const newCols = [...tableCols];
+    if (direction === 'up' && index > 0) {
+      [newCols[index - 1], newCols[index]] = [newCols[index], newCols[index - 1]];
+    } else if (direction === 'down' && index < newCols.length - 1) {
+      [newCols[index + 1], newCols[index]] = [newCols[index], newCols[index + 1]];
+    }
+    setTableCols(newCols);
+  };
+
+  const toggleColumn = (id: string) => {
+    setTableCols(tableCols.map(col => col.id === id ? { ...col, visible: !col.visible } : col));
+  };
+
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const stored = localStorage.getItem('user');
+      if (!stored || stored === 'undefined' || stored === 'null') return null;
+      return JSON.parse(stored);
+    } catch (e) { return null; }
+  });
+
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(() => !!localStorage.getItem('token'));
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [areas, setAreas] = useState<Area[]>([]);
+  const [tasks, setTasks] = useState<any[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [formJefe, setFormJefe] = useState('');
+
+  const [preselectedProjectId, setPreselectedProjectId] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [selectedAreas, setSelectedAreas] = useState<number[]>([]);
+  const [accesoSupervision, setAccesoSupervision] = useState(false);
+  const [controlAreaId, setControlAreaId] = useState<number | null>(null);
+  const [controlTasks, setControlTasks] = useState<any[]>([]);
+  
+  const [expandedAreas, setExpandedAreas] = useState<Set<number>>(new Set());
+  const [expandedProjects, setExpandedProjects] = useState<Set<number>>(new Set()); 
+  const [expandedTaskSubtasks, setExpandedTaskSubtasks] = useState<Set<number>>(new Set());
+
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<any | null>(null);
+ 
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  
+  const [selectedSubtaskIdForComment, setSelectedSubtaskIdForComment] = useState<string>('');
+
+  const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [detailsTab, setDetailsTab] = useState<DetailsTab>('comments');
+  
+  // 👇 AÑADE ESTA LÍNEA
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [selectedResponsibles, setSelectedResponsibles] = useState<string[]>([]);
+  const [userSearchTerm, setUserSearchTerm] = useState(''); 
+  const [isImporting, setIsImporting] = useState(false);
+
+  const [reportAreaFilter, setReportAreaFilter] = useState<string>('All');
+  const [reportProjectFilter, setReportProjectFilter] = useState<string>('All');
+  const [reportDateFrom, setReportDateFrom] = useState<string>('');
+  const [reportDateTo, setReportDateTo] = useState<string>('');
+
+  const canViewUsers = currentUser?.is_admin || currentUser?.perm_users_view;
+  const canViewAreas = currentUser?.is_admin || currentUser?.perm_areas_view;
+  const canViewProjects = currentUser?.is_admin || currentUser?.perm_projects_view;
+  const canViewReports = currentUser?.is_admin || currentUser?.perm_reports_view;
+
+  const handleLogout = async () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/'; 
+  };
+
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+    const logoutUser = () => {
+      alert("Tu sesión ha expirado por inactividad. Por seguridad, debes iniciar sesión nuevamente.");
+      handleLogout();
+    };
+    const resetTimer = () => { clearTimeout(timeoutId); timeoutId = setTimeout(logoutUser, 900000); };
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
+    const activityHandler = () => { resetTimer(); };
+    if (isLoggedIn) { events.forEach(e => window.addEventListener(e, activityHandler)); resetTimer(); }
+    return () => { clearTimeout(timeoutId); events.forEach(e => window.removeEventListener(e, activityHandler)); };
+  }, [isLoggedIn]);
+
+  const canViewSubtasks = (taskResponsable: string) => {
+    if (!currentUser) return false;
+    if (currentUser.is_admin || currentUser.perm_subtasks_view) return true;
+    const normalizeText = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim().toUpperCase() : '';
+    const miNombre = normalizeText(`${currentUser.nombre || ''} ${currentUser.apellido || ''}`);
+    return normalizeText(taskResponsable || '').includes(miNombre);
+  };
+
+  const canCreateSubtasks = () => currentUser?.is_admin || currentUser?.perm_subtasks_create;
+  const canDeleteSubtasks = () => currentUser?.is_admin || currentUser?.perm_subtasks_delete;
+
+  const canToggleSubtasks = (taskResponsable: string) => {
+    if (!currentUser) return false;
+    if (currentUser.is_admin || currentUser.perm_subtasks_edit) return true;
+    const normalizeText = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim().toUpperCase() : '';
+    const miNombre = normalizeText(`${currentUser.nombre || ''} ${currentUser.apellido || ''}`);
+    return normalizeText(taskResponsable || '').includes(miNombre);
+  };
+
+  const canCreateInCurrentView = () => {
+    if (currentView === 'tasks') return currentUser?.can_create_tasks;
+    if (currentView === 'users') return currentUser?.is_admin || currentUser?.perm_users_create;
+    if (currentView === 'areas') return currentUser?.is_admin || currentUser?.perm_areas_create;
+    if (currentView === 'projects') return currentUser?.is_admin || currentUser?.perm_projects_create; 
+    return false;
+  };
+
+  const filteredTasks = tasks.filter(task => {
+    if (!task) return false;
+    const act = task.actividad || '';
+    const matchesSearch = act.toLowerCase().includes(searchTerm.toLowerCase());
+    let matchesStatus = false;
+    if (statusFilter === 'All') {
+      matchesStatus = true;
+    } else if (statusFilter === 'Atrasadas') {
+      matchesStatus = getDaysOverdue(task.fecha_fin, task.estado) > 0;
+    } else {
+      matchesStatus = task.estado === statusFilter;
+    }
+    
+    if (currentView === 'tasks' && currentUser) {
+      const normalizeText = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim().toUpperCase() : '';
+      const miNombre = normalizeText(`${currentUser.nombre || ''} ${currentUser.apellido || ''}`);
+      const responsableTareaStr = normalizeText(task.responsable || '');
+      const isMyTask = responsableTareaStr.includes(miNombre);
+
+      if (taskTab === 'personal') return matchesSearch && matchesStatus && isMyTask;
+      
+      if (taskTab === 'team') {
+        if (currentUser.is_admin) return matchesSearch && matchesStatus;
+        let soyJefe = false;
+        const responsablesArray = responsableTareaStr.split(',').map(r => r.trim());
+        
+        for (const respName of responsablesArray) {
+           const responsableObj = allUsers.find(u => normalizeText(`${u.nombre || ''} ${u.apellido || ''}`) === respName);
+           if (responsableObj && responsableObj.area_id && areas.length > 0) {
+             const areaDelResponsable = areas.find(a => a.id === responsableObj.area_id);
+             const soyJefeDirecto = areaDelResponsable?.jefe_id === currentUser.id;
+             const soyJefePadre = areaDelResponsable?.parent_area_id ? areas.find(a => a.id === areaDelResponsable.parent_area_id)?.jefe_id === currentUser.id : false;
+             if(soyJefeDirecto || soyJefePadre) { soyJefe = true; break; }
+           }
+        }
+        if (soyJefe || isMyTask) return matchesSearch && matchesStatus;
+        return false;
+      }
+    }
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+      const ordA = a.orden_ejecucion; const ordB = b.orden_ejecucion;
+      if (ordA != null && ordB != null) return ordA - ordB;
+      if (ordA != null) return -1;
+      if (ordB != null) return 1;
+      const calA = parseInt(a.calificacion) || 0; const calB = parseInt(b.calificacion) || 0;
+      if (calB !== calA) return calB - calA;
+      return (b.id || 0) - (a.id || 0);
+  });
+
+  const filteredControlTasks = controlTasks.filter(task => {
+    if (!task) return false;
+    const act = task.actividad || '';
+    const matchesSearch = act.toLowerCase().includes(searchTerm.toLowerCase());
+    let matchesStatus = false;
+    if (statusFilter === 'All') matchesStatus = true;
+    else if (statusFilter === 'Atrasadas') matchesStatus = getDaysOverdue(task.fecha_fin, task.estado) > 0;
+    else matchesStatus = task.estado === statusFilter;
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+      const ordA = a.orden_ejecucion; const ordB = b.orden_ejecucion;
+      if (ordA != null && ordB != null) return ordA - ordB;
+      if (ordA != null) return -1;
+      if (ordB != null) return 1;
+      const calA = parseInt(a.calificacion) || 0; const calB = parseInt(b.calificacion) || 0;
+      if (calB !== calA) return calB - calA;
+      return (b.id || 0) - (a.id || 0);
+  });
+
+  const filteredReportTasks = tasks.filter(task => {
+    let matchArea = true; let matchProject = true; let matchDate = true;
+    if (reportAreaFilter !== 'All') matchArea = task.area_origen_id?.toString() === reportAreaFilter;
+    if (reportProjectFilter !== 'All') matchProject = task.proyecto_id?.toString() === reportProjectFilter;
+    if (reportDateFrom && task.fecha_registro) matchDate = task.fecha_registro >= reportDateFrom;
+    if (reportDateTo && task.fecha_registro && matchDate) matchDate = task.fecha_registro <= reportDateTo;
+    return matchArea && matchProject && matchDate;
+  });
+
+  const fetchAreas = async () => {
+    try {
+      const res = await fetch('/api/areas');
+      if (res.status === 401) { handleLogout(); return; }
+      const data = await res.json();
+      const validData = Array.isArray(data) ? data : (data?.data || data?.areas || []);
+      setAreas(validData);
+      const rootArea = validData.find((a: Area) => !a.parent_area_id);
+      if (rootArea && rootArea.id) setExpandedAreas(new Set([rootArea.id]));
+    } catch (err) {}
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('/api/users');
+      if (res.status === 401) { handleLogout(); return; }
+      const data = await res.json();
+      const validData = Array.isArray(data) ? data : (data?.data || data?.users || []);
+      setAllUsers(validData);
+      if (validData.length > 0 && !currentUser) setCurrentUser(validData[0]);
+    } catch (err) {}
+  };
+
+  const fetchTasks = async () => {
+    if (!currentUser || !currentUser.id) return;
+    try {
+      const res = await fetch(`/api/tasks?userId=${currentUser.id}`);
+      if (res.status === 401) { handleLogout(); return; }
+      const data = await res.json();
+      const validData = Array.isArray(data) ? data : (data?.data || data?.tasks || []);
+      setTasks(validData);
+      if (selectedTask) {
+        const updatedSelected = validData.find((t: any) => t.id === selectedTask.id);
+        if (updatedSelected) setSelectedTask(updatedSelected);
+      }
+      if (editingItem && currentView === 'tasks') {
+        const updatedEditing = validData.find((t: any) => t.id === editingItem.id);
+        if (updatedEditing) setEditingItem(updatedEditing);
+      }
+    } catch (err) {}
+  };
+
+  const fetchProjects = async () => {
+    try {
+      const res = await fetch('/api/projects');
+      if (res.status === 401) { handleLogout(); return; }
+      if (res.ok) {
+        const data = await res.json();
+        setProjects(Array.isArray(data) ? data : (data?.data || []));
+      }
+    } catch (err) {}
+  };
+
+  const fetchControlTasks = async () => {
+    if (!currentUser || (!currentUser.acceso_supervision && !currentUser.is_admin)) return; 
+    
+    let fetchedTasks: any[] = [];
+    
+    try {
+      const userId = parseInt(String(currentUser.id));
+      const areaQuery = controlAreaId ? `&areaId=${controlAreaId}` : '';
+      const url = `/api/control/tasks?userId=${userId}${areaQuery}`;
+      const res = await fetch(url);
+      
+      if (res.status === 401) { handleLogout(); return; }
+      
+      if (res.ok) {
+          const data = await res.json();
+          fetchedTasks = Array.isArray(data) ? data : (data?.data || data?.tasks || []);
+      }
+    } catch (err) {
+       console.warn("La ruta de control en el backend falló, activando motor de respaldo local...");
+    }
+
+    let areasAutorizadas: number[] = [];
+    if (currentUser.is_admin) {
+      areasAutorizadas = areas.map(a => a.id!);
+    } else if (currentUser.acceso_supervision) {
+      areasAutorizadas = currentUser.areas_autorizadas ? String(currentUser.areas_autorizadas).split(',').map(Number) : [];
+    }
+
+    const normalizeText = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim().toUpperCase() : '';
+
+    const localControlTasks = tasks.filter(task => {
+      if (currentUser.is_admin && !controlAreaId) return true;
+
+      let isValidForControl = false;
+      
+      if (task.area_origen_id) {
+         if (controlAreaId && task.area_origen_id === controlAreaId && areasAutorizadas.includes(task.area_origen_id)) {
+           isValidForControl = true;
+         } else if (!controlAreaId && areasAutorizadas.includes(task.area_origen_id)) {
+           isValidForControl = true;
+         }
+      }
+
+      if (!isValidForControl) {
+          const responsablesArray = task.responsable ? String(task.responsable).split(',').map(r => r.trim()) : [];
+          for (const respName of responsablesArray) {
+             const responsableUser = allUsers.find(u => normalizeText(`${u.nombre || ''} ${u.apellido || ''}`) === normalizeText(respName));
+             const taskAreaId = responsableUser ? responsableUser.area_id : null;
+             
+             if (taskAreaId) {
+               if (controlAreaId && taskAreaId === controlAreaId && areasAutorizadas.includes(taskAreaId)) {
+                 isValidForControl = true; break;
+               } else if (!controlAreaId && areasAutorizadas.includes(taskAreaId)) {
+                 isValidForControl = true; break;
+               }
+             }
+          }
+      }
+      return isValidForControl;
+    });
+    
+    const combinedTasks = [...fetchedTasks];
+    localControlTasks.forEach(localTask => {
+       if (!combinedTasks.find(t => t.id === localTask.id)) {
+           combinedTasks.push(localTask);
+       }
+    });
+
+    setControlTasks(combinedTasks);
+  };
+
+  const fetchNotifications = async () => {
+    try {
+      const res = await fetch('/api/notifications');
+      if (res.status === 401) { handleLogout(); return; }
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(Array.isArray(data) ? data : (data?.data || []));
+      } else setNotifications([]);
+    } catch (err) {}
+  };
+
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+    const checkSession = async () => {
+      if (isLoggedIn) {
+        await fetchAreas(); await fetchUsers(); await fetchProjects(); await fetchNotifications();
+        intervalId = setInterval(() => { fetchNotifications(); }, 15000);
+      } else handleLogout(); 
+      setLoading(false);
+    };
+    checkSession();
+    return () => { if (intervalId) clearInterval(intervalId); };
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (isLoggedIn && currentUser) fetchTasks();
+  }, [isLoggedIn, currentUser]);
+  
+  useEffect(() => {
+    setUserSearchTerm(''); 
+    if (editingItem && currentView === 'users') {
+      const area = areas.find(a => a.id === editingItem.area_id);
+      let bossName = 'Pendiente de asignar';
+      if (area) {
+        if (area.jefe_id === editingItem.id) {
+          const parentArea = areas.find(a => a.id === area.parent_area_id);
+          bossName = parentArea?.jefe_nombre || 'DIRECCION';
+        } else bossName = area.jefe_nombre || 'Pendiente de asignar';
+      }
+      setFormJefe(bossName);
+      setAccesoSupervision(!!editingItem.acceso_supervision);
+      setSelectedAreas(editingItem.areas_autorizadas ? String(editingItem.areas_autorizadas).split(',').map(Number) : []);
+    } else {
+      setFormJefe(''); setAccesoSupervision(false); setSelectedAreas([]);
+    }
+
+    if (editingItem && currentView === 'tasks') {
+        if(editingItem.responsable) {
+            const validUserNames = allUsers.map(u => `${u.nombre || ''} ${u.apellido || ''}`.trim().toLowerCase());
+            const currentResps = String(editingItem.responsable).split(',').map((r:string) => r.trim());
+            
+            const cleanResps = currentResps.filter(r => validUserNames.includes(r.toLowerCase()));
+            setSelectedResponsibles(cleanResps);
+        }
+        else setSelectedResponsibles([]);
+    } else setSelectedResponsibles([]);
+  }, [editingItem, currentView, areas, allUsers]);
+
+  const markNotificationsRead = async () => {
+    try { await fetch('/api/notifications/read', { method: 'PUT' }); fetchNotifications(); } catch (err) {}
+  };
+
+  const handleNotificationClick = async (notif: any) => {
+    const targetTaskId = Number(notif.task_id || notif.taskId);
+    if (targetTaskId) {
+      let taskToOpen = tasks.find(t => t.id == targetTaskId) || controlTasks.find(t => t.id == targetTaskId);
+      if (!taskToOpen) {
+        try {
+          const res = await fetch(`/api/tasks?userId=${currentUser?.id}`);
+          if (res.status === 401) { handleLogout(); return; }
+          const data = await res.json();
+          const freshTasks = Array.isArray(data) ? data : (data?.data || []);
+          setTasks(freshTasks);
+          taskToOpen = freshTasks.find((t: any) => t.id == targetTaskId);
+        } catch (err) {}
+      }
+      if (taskToOpen) {
+        setSelectedTask(taskToOpen); setDetailsTab('comments'); setIsDetailsModalOpen(true);
+        fetchTaskDetails(taskToOpen.id!); setShowNotifications(false); 
+      } else alert(`La tarea #${targetTaskId} no se encontró en tu vista actual.`);
+    }
+  };
+
+  const fetchTaskDetails = async (taskId: number) => {
+    try {
+      const [logsRes, attachmentsRes, commentsRes] = await Promise.all([
+        fetch(`/api/audit-logs/${taskId}`), fetch(`/api/attachments/${taskId}`), fetch(`/api/comments/${taskId}`)
+      ]);
+      if (logsRes.ok) setAuditLogs(await logsRes.json());
+      if (attachmentsRes.ok) setAttachments(await attachmentsRes.json());
+      if (commentsRes.ok) setComments(await commentsRes.json());
+    } catch (err) {}
+  };
+
+  const handleAddSubtask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTask || !newSubtaskTitle.trim()) return;
+    try {
+      const res = await fetch(`/api/tasks/${selectedTask.id}/subtasks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo: newSubtaskTitle })
+      });
+      if (res.ok) { setNewSubtaskTitle(''); fetchTasks(); }
+    } catch(e) {}
+  };
+
+  const handleToggleSubtask = async (subtaskId: number, currentStatus: boolean) => {
+    try {
+      const res = await fetch(`/api/tasks/subtasks/${subtaskId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ completada: !currentStatus })
+      });
+      if (res.ok) fetchTasks();
+    } catch(e) {}
+  };
+
+  const handleDeleteSubtask = async (subtaskId: number) => {
+    if (!confirm("¿Eliminar esta subtarea?")) return;
+    try {
+      const res = await fetch(`/api/tasks/subtasks/${subtaskId}`, { method: 'DELETE' });
+      if (res.ok) fetchTasks();
+    } catch(e) {}
+  };
+
+  const toggleTaskSubtasksExpand = (taskId: number) => {
+    setExpandedTaskSubtasks(prev => { const next = new Set(prev); if (next.has(taskId)) next.delete(taskId); else next.add(taskId); return next; });
+  };
+  
+  const handleCommentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTask || !newComment.trim() || isSubmittingComment) return;
+    setIsSubmittingComment(true);
+    let finalContent = newComment;
+    if (replyingTo) finalContent = `> Citando a ${replyingTo.user.nombre}:\n> "${replyingTo.content}"\n\n${newComment}`;
+
+    const payload: any = { task_id: selectedTask.id, content: finalContent };
+    if (selectedSubtaskIdForComment) {
+       payload.subtask_id = selectedSubtaskIdForComment;
+    }
+
+    try {
+      const res = await fetch(`/api/comments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (res.ok) { setNewComment(''); setReplyingTo(null); setSelectedSubtaskIdForComment(''); fetchTaskDetails(selectedTask.id!); }
+    } catch (err) {} finally { setIsSubmittingComment(false); }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!selectedTask || !e.target.files?.[0]) return;
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', e.target.files[0]);
+    try {
+      const res = await fetch(`/api/attachments/${selectedTask.id}`, { method: 'POST', body: formData });
+      if (res.ok) fetchTaskDetails(selectedTask.id!);
+    } catch (err) {} finally { setIsUploading(false); }
+  };
+
+  useEffect(() => {
+    if (currentView === 'control') fetchControlTasks();
+  }, [currentView, controlAreaId, currentUser, tasks, allUsers, areas]);
+
+  const toggleResponsible = (userName: string) => {
+    setSelectedResponsibles(prev => { if(prev.includes(userName)) return prev.filter(name => name !== userName); else return [...prev, userName]; });
+  };
+
+  const handleDragStart = (e: React.DragEvent, task: any) => { e.dataTransfer.setData('taskId', task.id.toString()); };
+
+  const handleDrop = async (e: React.DragEvent, newStatus: string) => {
+    e.preventDefault();
+    const taskIdStr = e.dataTransfer.getData('taskId');
+    if (!taskIdStr) return;
+
+    const taskId = parseInt(taskIdStr);
+    const task = tasks.find(t => t.id === taskId);
+    if (!task || task.estado === newStatus) return;
+
+    if (!currentUser?.is_admin) {
+        if (task.estado === 'Completado' || task.estado === 'Cancelado') {
+            alert("🚫 AUDITORÍA: Esta tarea ya está finalizada y no puede moverse."); return;
+        }
+        if (task.estado !== 'Planeado' && newStatus === 'Planeado') {
+            alert("🚫 AUDITORÍA: No puedes regresar una tarea en curso al estado 'Planeado'."); return;
+        }
+    }
+
+    try {
+        const res = await fetch(`/api/tasks/${taskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...task, estado: newStatus }) });
+        if (res.ok) fetchTasks(); else { const errorData = await res.json(); alert(errorData.error || "Error al mover la tarea."); }
+    } catch (err) { alert("Error de conexión al mover la tarea."); }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
+  
+ /*  const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    if (selectedResponsibles.length === 0) { alert("⚠️ Debes seleccionar al menos un responsable para la tarea."); return; }
+    const formData = new FormData(e.currentTarget);
+    const fInicio = formData.get('fecha_inicio') as string;
+    const fFin = formData.get('fecha_fin') as string;
+    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("⚠️ Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
+
+    try {
+      const taskData = {
+        // FIX 1: Forzamos el texto a MAYÚSCULAS
+        actividad: String(formData.get('actividad')).toUpperCase(), 
+        responsable: selectedResponsibles.join(', '), 
+        fecha_registro: formData.get('fecha_registro'), fecha_inicio: fInicio, fecha_fin: fFin, 
+        prioridad: formData.get('prioridad'), prerequisito: formData.get('prerequisito'), 
+        observacion: formData.get('observacion'), porcentaje_avance: parseFloat(formData.get('porcentaje_avance') as string) || 0,
+        estado: formData.get('estado'), created_by_id: currentUser.id,
+        proyecto_id: formData.get('proyecto_id') ? parseInt(formData.get('proyecto_id') as string) : null,
+        area_origen_id: formData.get('area_origen_id') ? parseInt(formData.get('area_origen_id') as string) : null,
+        gerente_responsable: formData.get('gerente_responsable'), tipo: formData.get('tipo'), tematica: formData.get('tematica'),
+        compromiso_semanal: formData.get('compromiso_semanal'), requiere_inversion: formData.get('requiere_inversion') === 'Sí',
+        alineacion_estrategica: formData.get('alineacion_estrategica'), impacto: formData.get('impacto'), viabilidad_tecnica: formData.get('viabilidad_tecnica'),
+        orden_ejecucion: formData.get('orden_ejecucion') ? parseInt(formData.get('orden_ejecucion') as string) : null
+      };
+      
+      const res = await fetch(editingItem ? `/api/tasks/${editingItem.id}` : '/api/tasks', { method: editingItem ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(taskData) });
+      if (res.status === 401) { handleLogout(); return; }
+      if (res.ok) { 
+          setIsModalOpen(false); 
+          fetchTasks(); 
+          fetchControlTasks(); 
+          setPreselectedProjectId(null); 
+          setSelectedResponsibles([]); 
+      } 
+      else { const errorData = await res.json(); alert(errorData.error || "Ocurrió un error al guardar la tarea."); }
+    } catch (err) {}
+  }; */
+  
+  
+  const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!currentUser || isSubmitting) return; // <-- Evita la doble ejecución
+    if (selectedResponsibles.length === 0) { alert("⚠️ Debes seleccionar al menos un responsable para la tarea."); return; }
+    
+    const formData = new FormData(e.currentTarget);
+    const fInicio = formData.get('fecha_inicio') as string;
+    const fFin = formData.get('fecha_fin') as string;
+    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("⚠️ Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
+
+    setIsSubmitting(true); // <-- Bloqueamos el botón inmediatamente
+
+    try {
+      const taskData = {
+        actividad: String(formData.get('actividad')).toUpperCase(), 
+        responsable: selectedResponsibles.join(', '), 
+        fecha_registro: formData.get('fecha_registro'), fecha_inicio: fInicio, fecha_fin: fFin, 
+        prioridad: formData.get('prioridad'), prerequisito: formData.get('prerequisito'), 
+        observacion: formData.get('observacion'), porcentaje_avance: parseFloat(formData.get('porcentaje_avance') as string) || 0,
+        estado: formData.get('estado'), created_by_id: currentUser.id,
+        proyecto_id: formData.get('proyecto_id') ? parseInt(formData.get('proyecto_id') as string) : null,
+        area_origen_id: formData.get('area_origen_id') ? parseInt(formData.get('area_origen_id') as string) : null,
+        gerente_responsable: formData.get('gerente_responsable'), tipo: formData.get('tipo'), tematica: formData.get('tematica'),
+        compromiso_semanal: formData.get('compromiso_semanal'), requiere_inversion: formData.get('requiere_inversion') === 'Sí',
+        alineacion_estrategica: formData.get('alineacion_estrategica'), impacto: formData.get('impacto'), viabilidad_tecnica: formData.get('viabilidad_tecnica'),
+        orden_ejecucion: formData.get('orden_ejecucion') ? parseInt(formData.get('orden_ejecucion') as string) : null
+      };
+      
+      const res = await fetch(editingItem ? `/api/tasks/${editingItem.id}` : '/api/tasks', { method: editingItem ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(taskData) });
+      if (res.status === 401) { handleLogout(); return; }
+      if (res.ok) { 
+          setIsModalOpen(false); 
+          fetchTasks(); 
+          fetchControlTasks(); 
+          setPreselectedProjectId(null); 
+          setSelectedResponsibles([]); 
+      } 
+      else { const errorData = await res.json(); alert(errorData.error || "Ocurrió un error al guardar la tarea."); }
+    } catch (err) {
+      alert("Error de conexión al servidor al guardar la tarea.");
+    } finally {
+      setIsSubmitting(false); // <-- Liberamos el botón sin importar el resultado
+    }
+  };
+  
+  
+
+  const handleProjectSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const fInicio = formData.get('fecha_inicio') as string; const fFin = formData.get('fecha_fin') as string;
+    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("⚠️ Error: La Fecha de Fin Estimada del proyecto no puede ser anterior a la Fecha de Inicio."); return; }
+
+    try {
+      const projectData = {
+        nombre: formData.get('nombre'), descripcion: formData.get('descripcion'), estado: formData.get('estado'), 
+        fecha_inicio: fInicio, fecha_fin: fFin, lider_id: formData.get('lider_id') ? parseInt(formData.get('lider_id') as string) : null,
+        prioritario: formData.get('prioritario') === 'on' 
+      };
+      const res = await fetch(editingItem ? `/api/projects/${editingItem.id}` : '/api/projects', { method: editingItem ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(projectData) });
+      if (res.ok) { setIsModalOpen(false); fetchProjects(); }
+    } catch (err) {}
+  };
+
+  const handleAreaSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    try {
+      const formData = new FormData(e.currentTarget);
+      const areaData = {
+        nombre: formData.get('nombre'), descripcion: formData.get('descripcion'),
+        jefe_id: formData.get('jefe_id') ? parseInt(formData.get('jefe_id') as string) : null,
+        parent_area_id: formData.get('parent_area_id') ? parseInt(formData.get('parent_area_id') as string) : null,
+      };
+      const res = await fetch(editingItem ? `/api/areas/${editingItem.id}` : '/api/areas', { method: editingItem ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(areaData) });
+      if (res.ok) { setIsModalOpen(false); fetchAreas(); fetchUsers(); }
+    } catch (err) {}
+  };
+
+  const handleUserSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const formEmail = formData.get('email') as string;
+
+    const duplicate = allUsers.find(u => u.email.toLowerCase() === formEmail.toLowerCase() && (editingItem ? u.id !== editingItem.id : true) );
+    if (duplicate) { if (!confirm(`⚠️ El correo ${formEmail} ya está asignado al usuario ${duplicate.nombre} ${duplicate.apellido}.\n\n¿Estás seguro de continuar y usar el mismo correo para este registro?`)) return; }
+
+    try {
+      const userData = {
+        nombre: formData.get('nombre'), apellido: formData.get('apellido'), cargo: formData.get('cargo'),
+        jefe_directo: formJefe, area_id: formData.get('area_id') ? parseInt(formData.get('area_id') as string) : null,
+        email: formEmail, password: formData.get('password') || undefined,
+        is_admin: formData.get('is_admin') === 'on' ? 1 : 0, debe_cambiar_password: formData.get('debe_cambiar_password') === 'on' ? 1 : 0,
+        acceso_supervision: accesoSupervision ? 1 : 0, areas_autorizadas: selectedAreas.join(','),
+        can_create_tasks: formData.get('can_create_tasks') === 'on' ? 1 : 0, can_edit_tasks: formData.get('can_edit_tasks') === 'on' ? 1 : 0, can_delete_tasks: formData.get('can_delete_tasks') === 'on' ? 1 : 0,
+        perm_users_view: formData.get('perm_users_view') === 'on' ? 1 : 0, perm_users_create: formData.get('perm_users_create') === 'on' ? 1 : 0,
+        perm_users_edit: formData.get('perm_users_edit') === 'on' ? 1 : 0, perm_users_delete: formData.get('perm_users_delete') === 'on' ? 1 : 0,
+        perm_areas_view: formData.get('perm_areas_view') === 'on' ? 1 : 0, perm_areas_create: formData.get('perm_areas_create') === 'on' ? 1 : 0,
+        perm_areas_edit: formData.get('perm_areas_edit') === 'on' ? 1 : 0, perm_areas_delete: formData.get('perm_areas_delete') === 'on' ? 1 : 0,
+        perm_projects_view: formData.get('perm_projects_view') === 'on' ? 1 : 0, perm_projects_create: formData.get('perm_projects_create') === 'on' ? 1 : 0,
+        perm_projects_edit: formData.get('perm_projects_edit') === 'on' ? 1 : 0, perm_projects_delete: formData.get('perm_projects_delete') === 'on' ? 1 : 0,
+        perm_reports_view: formData.get('perm_reports_view') === 'on' ? 1 : 0,
+        // FIX 2: Agregamos el nuevo permiso para edición en Control de Gestión
+        perm_control_edit: formData.get('perm_control_edit') === 'on' ? 1 : 0,
+        perm_subtasks_view: formData.get('perm_subtasks_view') === 'on' ? 1 : 0, perm_subtasks_create: formData.get('perm_subtasks_create') === 'on' ? 1 : 0,
+        perm_subtasks_edit: formData.get('perm_subtasks_edit') === 'on' ? 1 : 0, perm_subtasks_delete: formData.get('perm_subtasks_delete') === 'on' ? 1 : 0,
+      };
+      const res = await fetch(editingItem ? `/api/users/${editingItem.id}` : '/api/users', { method: editingItem ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(userData) });
+      if (res.ok) { setIsModalOpen(false); fetchUsers(); } 
+      else { const data = await res.json().catch(() => ({})); alert(data.error || "Error del servidor."); }
+    } catch (err) {}
+  };
+
+  const handleDelete = async (id: number, type: View) => {
+    if (!confirm(`¿Estás seguro de eliminar este registro?`)) return;
+    try {
+      const res = await fetch(`/api/${type}/${id}`, { method: 'DELETE' });
+      if (res.ok) { 
+        if (type === 'tasks') fetchTasks(); if (type === 'users') fetchUsers(); 
+        if (type === 'areas') fetchAreas(); if (type === 'projects') fetchProjects();
+      } else { const data = await res.json(); alert(data.error || "Ocurrió un error."); }
+    } catch (err) {}
+  };
+
+  const exportToExcelData = async (tasksToExport: any[], filenamePrefix: string) => {
+    if (tasksToExport.length === 0) return alert("No hay datos para exportar.");
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Reporte');
+
+    worksheet.columns = [
+      { header: 'ID', key: 'id', width: 8 }, { header: 'Actividad', key: 'actividad', width: 45 },
+      { header: 'Ejecutores (Responsables)', key: 'responsable', width: 35 }, { header: 'Área / Origen', key: 'area_origen', width: 25 },
+      { header: 'Proyecto / Iniciativa', key: 'proyecto', width: 25 }, { header: 'Gerente/Jefe Responsable', key: 'gerente', width: 25 },
+      { header: 'Tipo', key: 'tipo', width: 20 }, { header: 'Estado', key: 'estado', width: 15 },
+      { header: 'Fecha de Compromiso', key: 'fechaFin', width: 18 }, { header: 'Tematica', key: 'tematica', width: 25 },
+      { header: 'Prioridad', key: 'prioridad', width: 15 }, { header: '% actual', key: 'avance', width: 12 },
+      { header: 'Compromiso semanal', key: 'compromiso_semanal', width: 45 }, { header: 'Dependencia', key: 'dependencia', width: 25 },
+      { header: 'Requiere Inversión', key: 'inversion', width: 18 }, { header: 'Alineación estrategica', key: 'alineacion', width: 35 },
+      { header: 'Impacto financiero / Operativo', key: 'impacto', width: 25 }, { header: 'Viabilidad Tecnica', key: 'viabilidad', width: 25 },
+      { header: 'Calificacion', key: 'calificacion', width: 15 }, { header: 'Orden Sugerido/Manual', key: 'orden_ejecucion', width: 25 }, 
+      { header: 'Observaciones', key: 'observaciones', width: 60 }
+    ];
+
+    tasksToExport.forEach((task, idx) => {
+      const projectName = projects.find(p => p.id === task.proyecto_id)?.nombre || 'Sin Proyecto';
+      const areaName = areas.find(a => a.id === task.area_origen_id)?.nombre || 'Sin Área';
+      worksheet.addRow({
+        id: task.id, actividad: task.actividad, responsable: task.responsable, area_origen: areaName,
+        proyecto: projectName, gerente: task.gerente_responsable || 'Sin Asignar', tipo: task.tipo || '-',
+        estado: task.estado, fechaFin: task.fecha_fin, tematica: task.tematica || '-', prioridad: getPriorityLabel(task.prioridad),
+        avance: `${task.porcentaje_avance}%`, compromiso_semanal: task.compromiso_semanal || '-', dependencia: task.prerequisito || '-',
+        inversion: task.requiere_inversion ? 'Sí' : 'No', alineacion: task.alineacion_estrategica || '-', impacto: task.impacto || '-',
+        viabilidad: task.viabilidad_tecnica || '-', calificacion: task.calificacion || '-', orden_ejecucion: task.orden_ejecucion || `Sugerido #${idx + 1}`,
+        observaciones: task.observacion || '-'
+      });
+    });
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.eachCell(cell => { 
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0ea5e9' } }; 
+      cell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 11 }; 
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }; 
+    });
+    headerRow.height = 30;
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `${filenamePrefix}_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleExportExcel = () => { exportToExcelData(currentView === 'tasks' ? filteredTasks : filteredControlTasks, 'Reporte_General'); };
+  const handleExportFilteredReport = () => { exportToExcelData(filteredReportTasks, 'Reporte_Filtrado'); };
+
+  const handleDownloadTemplate = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Plantilla_Importacion');
+
+    worksheet.columns = [
+      { header: 'Ignorar', key: 'ignore1', width: 10 }, 
+      { header: 'Actividad (*Obligatorio)', key: 'actividad', width: 40 },
+      { header: 'Responsable', key: 'responsable', width: 30 }, 
+      { header: 'Área Origen', key: 'area', width: 20 },
+      { header: 'Proyecto', key: 'proyecto', width: 20 }, 
+      { header: 'Gerente Responsable', key: 'gerente', width: 20 },
+      { header: 'Tipo', key: 'tipo', width: 15 }, 
+      { header: 'Estado', key: 'estado', width: 15 },
+      { header: 'Fecha Inicio (YYYY-MM-DD)', key: 'fecha_inicio', width: 20 }, 
+      { header: 'Fecha Fin Estimada (YYYY-MM-DD)', key: 'fecha_fin', width: 20 }, 
+      { header: 'Temática', key: 'tematica', width: 20 },
+      { header: 'Prioridad', key: 'prioridad', width: 15 }, 
+      { header: '% Avance', key: 'avance', width: 15 },
+      { header: 'Compromiso Semanal', key: 'compromiso', width: 30 }, 
+      { header: 'Dependencia (Prerequisito)', key: 'prerequisito', width: 20 },
+      { header: 'Requiere Inversión (Sí/No)', key: 'inversion', width: 20 }, 
+      { header: 'Alineación Estratégica', key: 'alineacion', width: 30 },
+      { header: 'Impacto', key: 'impacto', width: 20 }, 
+      { header: 'Viabilidad Técnica', key: 'viabilidad', width: 20 },
+      { header: 'Ignorar', key: 'ignore20', width: 10 }, 
+      { header: 'Observación', key: 'observacion', width: 40 }
+    ];
+
+    const headerRow = worksheet.getRow(1);
+    headerRow.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4f46e5' } }; cell.font = { color: { argb: 'FFFFFFFF' }, bold: true }; });
+
+    worksheet.addRow({
+      ignore1: '', actividad: 'EJEMPLO DE TAREA NUEVA', responsable: 'Nombre Apellido',
+      area: 'Sistemas', proyecto: 'Migración Nube', gerente: 'Jefe Sistemas',
+      tipo: 'Soporte', estado: 'Planeado', 
+      fecha_inicio: '2026-04-01', 
+      fecha_fin: '2026-12-31', 
+      tematica: 'Infraestructura',
+      prioridad: 'Alta', avance: '0', compromiso: 'Avanzar 20%', prerequisito: 'Ninguno',
+      inversion: 'No', alineacion: 'WIG 2 Reducción y control del costo', impacto: '2. Medio',
+      viabilidad: '3. Baja Complejidad', ignore20: '', observacion: 'Prueba de importación'
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `Plantilla_Importacion_Tareas.xlsx`);
+    setShowImportMenu(false); 
+  };
+  
+  const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setIsImporting(true);
+    try {
+      const workbook = new ExcelJS.Workbook();
+      const buffer = await file.arrayBuffer();
+      await workbook.xlsx.load(buffer);
+      const worksheet = workbook.worksheets[0]; 
+      if (!worksheet) throw new Error("El archivo no tiene hojas");
+
+      const rows: any[] = [];
+      const mapPriorityToSystem = (p: string) => {
+          const str = String(p || '').toUpperCase();
+          if(str.includes('MUY ALTA')) return '0|Muy Alta';
+          if(str.includes('ALTA')) return '1|Alta';
+          if(str.includes('MEDIA')) return '2|Media';
+          if(str.includes('MUY BAJA')) return '4|Muy Baja';
+          if(str.includes('BAJA')) return '3|Baja';
+          return '2|Media';
+      };
+
+      const parseExcelDate = (cell: ExcelJS.Cell | undefined) => {
+        if (!cell) return '';
+        if (cell.value instanceof Date) {
+            const d = cell.value;
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+        const text = cell.text || String(cell.value || '').trim();
+        if (text.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/)) {
+            const parts = text.split(/[\/\-]/);
+            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+        }
+        return text;
+      };
+
+      const normalizeForMatch = (str: string) => {
+          return str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase() : '';
+      };
+
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; 
+        const val = (colIndex: number) => row.getCell(colIndex)?.text || '';
+        
+        // FIX 1B: Forzamos la actividad importada a MAYÚSCULAS
+        const actividad = val(2).toUpperCase(); 
+        if (!actividad) return; 
+
+        const areaName = val(4); const projectName = val(5);
+        const areaObj = areas.find(a => normalizeForMatch(a.nombre) === normalizeForMatch(areaName));
+        const projectObj = projects.find(p => normalizeForMatch(p.nombre) === normalizeForMatch(projectName));
+
+        const rawFechaInicio = parseExcelDate(row.getCell(9));
+        const finalFechaInicio = rawFechaInicio || new Date().toISOString().split('T')[0];
+
+        rows.push({
+          actividad: actividad, responsable: val(3), area_origen_id: areaObj ? areaObj.id : null,
+          proyecto_id: projectObj ? projectObj.id : null, gerente_responsable: val(6),
+          tipo: val(7), estado: val(8) || 'Planeado', 
+          fecha_inicio: finalFechaInicio, 
+          fecha_fin: parseExcelDate(row.getCell(10)), 
+          tematica: val(11), 
+          prioridad: mapPriorityToSystem(val(12)), 
+          porcentaje_avance: parseInt(val(13).replace('%', '')) || 0, 
+          compromiso_semanal: val(14), 
+          prerequisito: val(15), 
+          requiere_inversion: val(16).toLowerCase() === 'sí' || val(16).toLowerCase() === 'si', 
+          alineacion_estrategica: val(17), 
+          impacto: val(18), 
+          viabilidad_tecnica: val(19), 
+          observacion: val(21), 
+          fecha_registro: new Date().toISOString().split('T')[0] 
+        });
+      });
+
+      if (rows.length === 0) { alert("No se encontraron tareas válidas."); setIsImporting(false); return; }
+
+      const res = await fetch('/api/tasks/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: rows }) });
+      
+      if (res.ok) { 
+          alert(`¡Éxito! Se importaron ${rows.length} tareas correctamente.`); 
+          await fetchTasks(); 
+          await fetchControlTasks(); 
+      } 
+      else { alert("Error al importar en el servidor."); }
+
+    } catch (error) { alert("Error al leer el archivo Excel."); } finally { e.target.value = ''; setIsImporting(false); }
+  };
+
+  const toggleArea = (id: number) => setExpandedAreas(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const toggleProject = (id: number) => setExpandedProjects(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+
+  const renderAreaTree = (parentId: number | null = null, level: number = 0): React.ReactNode => {
+    const children = areas.filter(a => (parentId === null ? !a.parent_area_id : a.parent_area_id === parentId));
+    return children.map((area) => {
+      const isExpanded = expandedAreas.has(area.id!);
+      const hasChildren = areas.some(a => a.parent_area_id === area.id);
+      return (
+        <React.Fragment key={area.id}>
+          <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-4 ml-${level * 8}`}>
+             <h3 className="font-bold text-slate-900 flex justify-between">
+                <span onClick={() => hasChildren && toggleArea(area.id!)} className="cursor-pointer flex items-center gap-2">
+                  {hasChildren && <ChevronDown size={16} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />}{area.nombre}
+                </span>
+                <div className="flex gap-2">
+                  <button onClick={() => { setEditingItem(area); setIsModalOpen(true); }}><Edit2 size={14}/></button>
+                  <button onClick={() => handleDelete(area.id!, 'areas')}><Trash2 size={14}/></button>
+                </div>
+             </h3>
+             <p className="text-xs text-slate-500">{area.descripcion}</p>
+          </div>
+          {isExpanded && renderAreaTree(area.id!, level + 1)}
+        </React.Fragment>
+      );
+    });
+  };
+
+  const renderReportsView = () => {
+    const totalTasks = filteredReportTasks.length;
+    const completedTasks = filteredReportTasks.filter(t => t.estado === 'Completado').length;
+    const overdueTasks = filteredReportTasks.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length;
+    const generalProgress = totalTasks > 0 ? (filteredReportTasks.reduce((sum, t) => sum + (Number(t.porcentaje_avance) || 0), 0) / totalTasks).toFixed(1) : 0;
+
+    const tasksByArea = areas.map(area => {
+      const areaTasks = filteredReportTasks.filter(t => t.area_origen_id === area.id);
+      return { name: area.nombre.length > 15 ? area.nombre.substring(0, 15) + '...' : area.nombre, Total: areaTasks.length, Completadas: areaTasks.filter(t => t.estado === 'Completado').length, Atrasadas: areaTasks.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length };
+    }).filter(data => data.Total > 0);
+
+    const userStats = allUsers.map(user => {
+      const fullName = `${user.nombre} ${user.apellido}`;
+      const assignedTasks = filteredReportTasks.filter(t => t.responsable && String(t.responsable).includes(fullName));
+      return { name: fullName, total: assignedTasks.length, completed: assignedTasks.filter(t => t.estado === 'Completado').length, progress: assignedTasks.length > 0 ? Math.round(assignedTasks.reduce((sum, t) => sum + (Number(t.porcentaje_avance) || 0), 0) / assignedTasks.length) : 0 };
+    }).filter(u => u.total > 0).sort((a, b) => b.total - a.total).slice(0, 5);
+
+    const clearFilters = () => { setReportAreaFilter('All'); setReportProjectFilter('All'); setReportDateFrom(''); setReportDateTo(''); };
+
+    return (
+      <div className="space-y-6">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-end gap-4">
+           <div className="flex-1 min-w-[200px]">
+             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Área</label>
+             <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500 font-medium" value={reportAreaFilter} onChange={(e) => setReportAreaFilter(e.target.value)}>
+                <option value="All">Todas las Áreas</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+             </select>
+           </div>
+           <div className="flex-1 min-w-[200px]">
+             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Proyecto</label>
+             <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500 font-medium" value={reportProjectFilter} onChange={(e) => setReportProjectFilter(e.target.value)}>
+                <option value="All">Todos los Proyectos</option>{projects.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+             </select>
+           </div>
+           <div className="w-[140px]">
+             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Desde</label>
+             <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium" value={reportDateFrom} onChange={(e) => setReportDateFrom(e.target.value)} />
+           </div>
+           <div className="w-[140px]">
+             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Hasta</label>
+             <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium" value={reportDateTo} onChange={(e) => setReportDateTo(e.target.value)} />
+           </div>
+           <div className="flex gap-2">
+             <button onClick={clearFilters} className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all"><FilterX size={18} /></button>
+             <button onClick={handleExportFilteredReport} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-sm shadow-emerald-200 flex items-center gap-2"><Download size={18} /> Exportar Excel</button>
+           </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText size={24}/></div>
+            <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Tareas</p><h3 className="text-2xl font-black text-slate-900">{totalTasks}</h3></div>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center"><CheckCircle2 size={24}/></div>
+            <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Completadas</p><h3 className="text-2xl font-black text-emerald-600">{completedTasks}</h3></div>
+          </div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center"><AlertCircle size={24}/></div>
+            <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Atrasadas</p><h3 className="text-2xl font-black text-red-600">{overdueTasks}</h3></div>
+          </div>
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-5 rounded-2xl border border-slate-700 shadow-sm flex items-center gap-4">
+            <div className="w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center"><TrendingUp size={24}/></div>
+            <div><p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Progreso Global</p><h3 className="text-2xl font-black text-white">{generalProgress}%</h3></div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+             <div className="flex items-center gap-2 mb-6"><BarChart3 size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Volumen de Tareas por Área</span></div>
+             <div className="h-80">
+               {tasksByArea.length > 0 ? (
+                 <ResponsiveContainer width="100%" height="100%">
+                   <BarChart data={tasksByArea} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
+                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                     <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                     <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
+                     <Bar dataKey="Total" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                     <Bar dataKey="Completadas" fill="#10b981" radius={[4, 4, 0, 0]} />
+                     <Bar dataKey="Atrasadas" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                   </BarChart>
+                 </ResponsiveContainer>
+               ) : <div className="flex h-full items-center justify-center text-slate-400 text-sm italic">Cambia los filtros para ver datos</div>}
+             </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+            <div className="flex items-center gap-2 mb-6"><Activity size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Top 5 Empleados</span></div>
+             <div className="flex-1 space-y-4 overflow-y-auto pr-2">
+               {userStats.length > 0 ? userStats.map((user, index) => (
+                 <div key={index} className="flex flex-col gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex justify-between items-center">
+                       <span className="text-sm font-bold text-slate-800 line-clamp-1" title={user.name}>{user.name}</span>
+                       <span className="text-xs font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{user.total} tareas</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                       <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(user.progress)}`} style={{ width: `${user.progress}%` }}/></div>
+                       <span className="text-[10px] font-bold text-slate-500 w-8 text-right">{user.progress}%</span>
+                    </div>
+                 </div>
+               )) : <div className="flex h-full items-center justify-center text-slate-400 text-sm italic">Cambia los filtros para ver usuarios</div>}
+             </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  if (isLoggedIn === null) return <div className="min-h-screen bg-slate-50 flex items-center justify-center font-medium text-slate-500">Cargando...</div>;
+
+  const currentViewTasksForHeader = currentView === 'tasks' ? filteredTasks : currentView === 'control' ? filteredControlTasks : [];
+  const headerAvgProgressRaw = currentViewTasksForHeader.length > 0 ? (currentViewTasksForHeader.reduce((acc, t) => acc + (Number(t.porcentaje_avance) || 0), 0) / currentViewTasksForHeader.length) : 0;
+  const headerAvgProgress = headerAvgProgressRaw.toFixed(1);
+
+  const activeProjectsCount = projects.filter(p => p.estado === 'Activo').length;
+  const completedProjectsCount = projects.filter(p => p.estado === 'Finalizado').length;
+  const overdueProjectsCount = projects.filter(p => p.estado === 'Activo' && getDaysOverdue(p.fecha_fin || '', p.estado) > 0).length;
+  const globalProjectProgressRaw = projects.length > 0 ? projects.reduce((acc, p) => { const pTasks = tasks.filter(t => t.proyecto_id === p.id); const pProgress = pTasks.length > 0 ? pTasks.reduce((sum, t) => sum + (Number(t.porcentaje_avance) || 0), 0) / pTasks.length : 0; return acc + pProgress; }, 0) / projects.length : 0;
+
+  const renderDynamicCell = (colId: string, task: any, index: number, isControlView = false) => {
+      const overdueDays = getDaysOverdue(task.fecha_fin, task.estado);
+      const taskProject = projects.find(p => p.id === task.proyecto_id);
+      const responsablesArray = task.responsable ? String(task.responsable).split(',').map(r => r.trim()) : [];
+      const isTaskSubExpanded = expandedTaskSubtasks.has(task.id!);
+      const totalSubtasks = task.subtasks?.length || 0;
+      const completedSubtasks = task.subtasks?.filter((st: any) => st.completada).length || 0;
+      const canView = canViewSubtasks(String(task.responsable));
+      const isTaskLocked = task.estado === 'Completado' || task.estado === 'Cancelado';
+      const isTaskActive = task.estado !== 'Planeado' || task.porcentaje_avance > 0;
+      const canEditTask = !!(currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked));
+      const canDeleteTask = !!(currentUser?.is_admin || (currentUser?.can_delete_tasks && !isTaskActive));
+
+      switch(colId) {
+        case 'orden': return (
+          <td key={`orden-${task.id}`} className="px-6 py-4">
+             <div className="flex justify-center items-center">
+                {index === 0 && <span className="text-2xl drop-shadow-md animate-pulse" title="Prioridad #1 Absoluta">🏆</span>}
+                {index === 1 && <span className="text-xl drop-shadow-md" title="Prioridad #2">🥈</span>}
+                {index === 2 && <span className="text-xl drop-shadow-md" title="Prioridad #3">🥉</span>}
+                {index > 2 && <span className="text-xs font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-md border border-slate-200 shadow-inner">#{index + 1}</span>}
+             </div>
+          </td>
+        );
+        case 'actividad': return (
+          <td key={`actividad-${task.id}`} className="px-6 py-4">
+            <div className="text-sm font-bold text-slate-900">{task.actividad}</div>
+            <span className={`text-[9px] font-black px-2 py-0.5 mt-1 rounded-full uppercase inline-block bg-slate-100 text-slate-500 border-slate-200 ${getPriorityColor(task.prioridad)}`}>{getPriorityLabel(task.prioridad)}</span>
+            {task.calificacion && <span className="ml-2 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-block bg-indigo-100 text-indigo-700 border-indigo-200">⭐ {task.calificacion} pts</span>}
+            {totalSubtasks > 0 && canView && (
+              <div className="mt-2"><button onClick={() => toggleTaskSubtasksExpand(task.id!)} className="flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-indigo-600 transition-colors w-max"><ChevronDown size={14} className={`transition-transform ${isTaskSubExpanded ? 'rotate-180' : ''}`} /> ↳ Subtareas ({completedSubtasks}/{totalSubtasks})</button></div>
+            )}
+          </td>
+        );
+        case 'proyecto': return (
+          <td key={`proyecto-${task.id}`} className="px-6 py-4">{taskProject ? <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 flex items-center gap-1 w-max"><FolderKanban size={10} /> {taskProject.nombre}</span> : <span className="text-xs text-slate-300 italic">-</span>}</td>
+        );
+        case 'compromiso': return (
+          <td key={`compromiso-${task.id}`} className="px-6 py-4"><div className="text-[10px] text-slate-400">{task.fecha_fin}</div>{overdueDays > 0 && <span className="mt-1 inline-block text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded uppercase">⚠️ {overdueDays} días</span>}</td>
+        );
+        case 'avance': return (
+          <td key={`avance-${task.id}`} className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-12 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(task.porcentaje_avance)}`} style={{ width: `${task.porcentaje_avance}%` }} /></div><span className={`text-[10px] font-bold ${getProgressTextColor(task.porcentaje_avance)}`}>{task.porcentaje_avance}%</span></div></td>
+        );
+        case 'estado': return (
+          <td key={`estado-${task.id}`} className="px-6 py-4"><span className={`text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider ${getStatusColor(task.estado)}`}>{task.estado}</span></td>
+        );
+        case 'responsable': return (
+          <td key={`responsable-${task.id}`} className="px-6 py-4">
+             {isControlView ? (
+                <div className="flex items-center gap-3">
+                   <div className="w-6 h-6 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center text-[10px] font-bold uppercase shrink-0">{String(task.responsable || 'U').charAt(0)}</div>
+                   <div>
+                     <span className="text-xs font-bold text-slate-700 block">{String(task.responsable || 'Usuario').split(',')[0]}</span>
+                     <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 mt-1 rounded-full uppercase inline-block">{(() => { const respUser = allUsers.find(u => `${u.nombre} ${u.apellido}` === String(task.responsable).split(',')[0].trim()); const area = areas.find(a => a.id === respUser?.area_id); return area ? area.nombre : 'Sin Área'; })()}</span>
+                   </div>
+                </div>
+             ) : (
+                <div className="flex -space-x-2 overflow-hidden" title={String(task.responsable)}>{responsablesArray.slice(0, 3).map((resp, idx) => (<div key={idx} className="inline-block h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-[10px] uppercase border-2 border-white relative z-10 shadow-sm">{String(resp).charAt(0)}</div>))}{responsablesArray.length > 3 && <div className="inline-block h-8 w-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] border-2 border-white relative z-0">+{responsablesArray.length - 3}</div>}</div>
+             )}
+          </td>
+        );
+        case 'acciones': return (
+          <td key={`acciones-${task.id}`} className="px-6 py-4">
+            <div className="flex justify-center gap-2">
+              <button onClick={() => { setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Ver Detalles"><Eye size={16} /></button>
+              
+              {/* FIX 2: Lógica condicional de edición en Panel vs Control de Gestión */}
+              {!isControlView ? (
+                 <>
+                   {canEditTask ? <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea"><Edit2 size={16} /></button> : (currentUser?.can_edit_tasks && isTaskLocked) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
+                   {canDeleteTask ? <button onClick={() => handleDelete(task.id!, 'tasks')} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar Tarea"><Trash2 size={16} /></button> : (currentUser?.can_delete_tasks && isTaskActive) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
+                 </>
+              ) : (
+                 (currentUser?.is_admin || (currentUser as any)?.perm_control_edit) && (
+                    <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea desde Control"><Edit2 size={16} /></button>
+                 )
+              )}
+            </div>
+          </td>
+        );
+        default: return null;
+      }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
+      <aside className="w-full md:w-64 bg-white border-r border-slate-200 flex flex-col sticky top-0 h-screen z-20">
+        <div className="p-6 border-b border-slate-100">
+          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white"><LayoutDashboard size={18} /></div>
+            TaskFlow Pro
+          </h1>
+        </div>
+
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          <button onClick={() => setCurrentView('tasks')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'tasks' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FileText size={18} /> Panel de Actividades</button>
+          {canViewProjects && <button onClick={() => setCurrentView('projects')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'projects' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FolderKanban size={18} /> Gestión de Proyectos</button>}
+          {canViewReports && <button onClick={() => setCurrentView('reports')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'reports' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><PieChartIconLucide size={18} /> Reportes</button>}
+          {canViewUsers && <button onClick={() => setCurrentView('users')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'users' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={18} /> Gestión de Usuarios</button>}
+          {canViewAreas && <button onClick={() => setCurrentView('areas')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} /> Gestión de Áreas</button>}
+          {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => setCurrentView('control')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} /> Control de Gestión</button>}
+        </nav>
+
+        <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+          {currentUser && (
+            <div className="flex items-center gap-3 mb-4 px-2">
+              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 border border-blue-200 flex items-center justify-center font-bold text-sm shrink-0 shadow-sm uppercase">{String(currentUser.nombre || '').charAt(0)}{String(currentUser.apellido || '').charAt(0)}</div>
+              <div className="min-w-0 overflow-hidden">
+                <p className="text-sm font-bold text-slate-900 truncate">{currentUser.nombre} {currentUser.apellido}</p>
+                <p className="text-[10px] font-medium text-slate-500 truncate">{(currentUser as any).cargo || currentUser.email}</p>
+              </div>
+            </div>
+          )}
+          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all"><LogOut size={18} /> Cerrar Sesión</button>
+        </div>
+      </aside>
+
+      <main className="flex-1 overflow-y-auto h-screen relative" onClick={() => { if(showImportMenu) setShowImportMenu(false); if(showColumnManager) setShowColumnManager(false); }}>
+        <header className="bg-white border-b border-slate-200 px-8 pt-8 pb-0 sticky top-0 z-10">
+          <div className="flex justify-between items-start mb-6">
+            <div className="space-y-4 w-full">
+              <div className="flex justify-between items-center">
+                <div>
+                  {currentView === 'tasks' ? (
+                    <>
+                      <div className="flex items-center gap-4 mb-1">
+                        <button onClick={() => setTaskTab('personal')} className={`text-2xl font-bold transition-all ${taskTab === 'personal' ? 'text-slate-900 border-b-2 border-blue-600 pb-1' : 'text-slate-400 hover:text-slate-600'}`}>Mis Tareas</button>
+                        <button onClick={() => setTaskTab('team')} className={`text-2xl font-bold transition-all ${taskTab === 'team' ? 'text-slate-900 border-b-2 border-blue-600 pb-1' : 'text-slate-400 hover:text-slate-600'}`}>Equipo</button>
+                      </div>
+                      <p className="text-slate-500 text-sm">Gestiona y supervisa las actividades</p>
+                    </>
+                  ) : currentView === 'reports' ? (
+                    <>
+                      <h2 className="text-2xl font-bold text-slate-900 capitalize">Reportes Gerenciales</h2>
+                      <p className="text-slate-500 text-sm">Visualización de datos y métricas globales</p>
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-2xl font-bold text-slate-900 capitalize">
+                        {currentView === 'users' ? 'Gestión de Usuarios' : currentView === 'areas' ? 'Gestión de Áreas' : currentView === 'projects' ? 'Gestión de Proyectos' : 'Control de Gestión'}
+                      </h2>
+                      <p className="text-slate-500 text-sm">Administración y supervisión del sistema</p>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-4">
+                  {(currentView === 'tasks' || currentView === 'control') && (
+                    <div className="hidden lg:flex bg-slate-50 rounded-xl px-4 py-2 border border-slate-200 items-center gap-4">
+                      <div className="text-right">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Progreso Real</div>
+                        <div className={`text-sm font-bold ${getProgressTextColor(headerAvgProgressRaw)}`}>{headerAvgProgress}%</div>
+                      </div>
+                      <div className="w-24 bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${getProgressBarColor(headerAvgProgressRaw)}`} style={{ width: `${headerAvgProgress}%` }} />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="relative">
+                    <button onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) markNotificationsRead(); }} className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 relative transition-all active:scale-95">
+                      <Bell size={20} />
+                      {notifications.some(n => !n.read) && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full" />}
+                    </button>
+                    <AnimatePresence>
+                      {showNotifications && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50">
+                          <div className="p-4 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
+                            <h4 className="font-bold text-slate-900 text-sm">Notificaciones</h4>
+                            <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">{notifications.filter(n => !n.read).length} Nuevas</span>
+                          </div>
+                          <div className="max-h-96 overflow-y-auto">
+                            {notifications.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm italic">No hay notificaciones</div> : (
+                              notifications.map(n => (
+                                <div key={n.id} onClick={() => handleNotificationClick(n)} className={`cursor-pointer p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${!n.read ? 'bg-blue-50/30' : ''}`}>
+                                  <p className="text-xs text-slate-700 leading-relaxed">{n.message}</p>
+                                  <span className="text-[10px] text-slate-400 mt-1 block">{new Date(n.created_at).toLocaleString()}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  {(currentView === 'tasks' || currentView === 'control') && canCreateInCurrentView() && (
+                    <div className="relative">
+                      <input type="file" id="excel-upload" accept=".xlsx, .xls" hidden onChange={handleImportExcel} />
+                      <div className="flex rounded-xl shadow-lg shadow-indigo-200">
+                        <button onClick={() => document.getElementById('excel-upload')?.click()} disabled={isImporting} className="bg-indigo-600 text-white px-4 py-2.5 rounded-l-xl font-medium flex items-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 border-r border-indigo-700"><Upload size={18} /> {isImporting ? 'Importando...' : 'Importar'}</button>
+                        <button onClick={(e) => { e.stopPropagation(); setShowImportMenu(!showImportMenu); }} disabled={isImporting} className="bg-indigo-600 text-white px-2 py-2.5 rounded-r-xl hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center"><ChevronDown size={18} /></button>
+                      </div>
+
+                      <AnimatePresence>
+                        {showImportMenu && (
+                          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50">
+                            <div className="py-1">
+                              <button onClick={() => { document.getElementById('excel-upload')?.click(); setShowImportMenu(false); }} className="w-full px-4 py-3 text-sm text-left text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"><FileText size={16} className="text-indigo-600" /><span className="font-medium">Cargar archivo Excel</span></button>
+                              <button onClick={handleDownloadTemplate} className="w-full px-4 py-3 text-sm text-left text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-100"><Download size={16} className="text-indigo-600" /><span className="font-medium">Descargar plantilla</span></button>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+
+                  {(currentView === 'tasks' || currentView === 'control') && (
+                    <button onClick={handleExportExcel} className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 active:scale-95">
+                      <Download size={18} /> Exportar Excel
+                    </button>
+                  )}
+
+                  {canCreateInCurrentView() && currentView !== 'reports' && (
+                    <button onClick={() => { setEditingItem(null); setPreselectedProjectId(null); setUserSearchTerm(''); setIsModalOpen(true); }} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 active:scale-95">
+                      <Plus size={18} /> {currentView === 'tasks' ? 'Nueva Tarea' : currentView === 'users' ? 'Nuevo Usuario' : currentView === 'projects' ? 'Nuevo Proyecto' : 'Nueva Área'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="p-8">
+          
+          {currentView === 'reports' && renderReportsView()}
+
+          {currentView === 'tasks' && (
+            <>
+              <div className="mb-6 space-y-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                  
+                  <div onClick={() => setStatusFilter('All')} className={`cursor-pointer p-4 rounded-2xl border transition-all active:scale-95 shadow-sm flex flex-col justify-center ${statusFilter === 'All' ? 'bg-blue-600 border-blue-700 text-white' : 'bg-white border-slate-200 hover:border-blue-300'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-lg ${statusFilter === 'All' ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600'}`}><LayoutDashboard size={14} /></div>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${statusFilter === 'All' ? 'text-blue-100' : 'text-slate-400'}`}>Global</span>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <span className={`text-3xl font-black ${statusFilter === 'All' ? 'text-white' : getProgressTextColor(headerAvgProgressRaw)}`}>{headerAvgProgress}%</span>
+                    </div>
+                  </div>
+                  
+                  <div onClick={() => setStatusFilter('Planeado')} className={`cursor-pointer p-4 rounded-2xl border transition-all active:scale-95 shadow-sm flex flex-col justify-center ${statusFilter === 'Planeado' ? 'bg-slate-700 border-slate-800 text-white' : 'bg-white border-slate-200 hover:border-slate-400'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-lg ${statusFilter === 'Planeado' ? 'bg-slate-600 text-white' : 'bg-slate-50 text-slate-600'}`}><Clock size={14} /></div>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${statusFilter === 'Planeado' ? 'text-slate-300' : 'text-slate-400'}`}>Planeado</span>
+                    </div>
+                    <span className="text-3xl font-black">{filteredTasks.filter(t => t.estado === 'Planeado').length}</span>
+                  </div>
+
+                  <div onClick={() => setStatusFilter('En curso')} className={`cursor-pointer p-4 rounded-2xl border transition-all active:scale-95 shadow-sm flex flex-col justify-center ${statusFilter === 'En curso' ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-200 hover:border-indigo-300'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-lg ${statusFilter === 'En curso' ? 'bg-indigo-500 text-white' : 'bg-indigo-50 text-indigo-600'}`}><PlayCircle size={14} /></div>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${statusFilter === 'En curso' ? 'text-indigo-100' : 'text-slate-400'}`}>En curso</span>
+                    </div>
+                    <span className="text-3xl font-black">{filteredTasks.filter(t => t.estado === 'En curso').length}</span>
+                  </div>
+                  
+                  <div onClick={() => setStatusFilter('En espera')} className={`cursor-pointer p-4 rounded-2xl border transition-all active:scale-95 shadow-sm flex flex-col justify-center ${statusFilter === 'En espera' ? 'bg-amber-500 border-amber-600 text-white' : 'bg-white border-slate-200 hover:border-amber-400'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-lg ${statusFilter === 'En espera' ? 'bg-amber-400 text-white' : 'bg-amber-50 text-amber-600'}`}><Eye size={14} /></div>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${statusFilter === 'En espera' ? 'text-amber-50' : 'text-slate-400'}`}>En espera</span>
+                    </div>
+                    <span className="text-3xl font-black">{filteredTasks.filter(t => t.estado === 'En espera').length}</span>
+                  </div>
+
+                  <div onClick={() => setStatusFilter('Atrasadas')} className={`cursor-pointer p-4 rounded-2xl border transition-all active:scale-95 shadow-sm flex flex-col justify-center ${statusFilter === 'Atrasadas' ? 'bg-red-600 border-red-700 text-white' : filteredTasks.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length > 0 ? 'bg-red-50 border-red-200 hover:bg-red-100' : 'bg-white border-slate-200 hover:border-red-300'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-lg ${statusFilter === 'Atrasadas' ? 'bg-red-500 text-white' : filteredTasks.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length > 0 ? 'bg-red-100 text-red-600' : 'bg-slate-50 text-slate-400'}`}><AlertCircle size={14} /></div>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${statusFilter === 'Atrasadas' ? 'text-red-100' : filteredTasks.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length > 0 ? 'text-red-600' : 'text-slate-400'}`}>Atrasadas</span>
+                    </div>
+                    <span className={`text-3xl font-black ${statusFilter === 'Atrasadas' ? 'text-white' : filteredTasks.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length > 0 ? 'text-red-600' : 'text-slate-900'}`}>{filteredTasks.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length}</span>
+                  </div>
+
+                  <div onClick={() => setStatusFilter('Completado')} className={`cursor-pointer p-4 rounded-2xl border transition-all active:scale-95 shadow-sm flex flex-col justify-center ${statusFilter === 'Completado' ? 'bg-emerald-600 border-emerald-700 text-white' : 'bg-white border-slate-200 hover:border-emerald-400'}`}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`p-1.5 rounded-lg ${statusFilter === 'Completado' ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600'}`}><CheckCircle2 size={14} /></div>
+                      <span className={`text-[10px] font-bold uppercase tracking-widest ${statusFilter === 'Completado' ? 'text-emerald-50' : 'text-slate-400'}`}>Completado</span>
+                    </div>
+                    <span className="text-3xl font-black">{filteredTasks.filter(t => t.estado === 'Completado').length}</span>
+                  </div>
+                </div>
+              </div>
+
+              <ChartsSection data={filteredTasks} />
+
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                
+                <div className="flex items-center gap-2">
+                  <div className="flex bg-slate-200/50 p-1.5 rounded-xl w-max border border-slate-200 shadow-inner">
+                    <button onClick={() => setTaskDisplayMode('list')} className={`flex items-center gap-2 px-5 py-2 text-xs font-black rounded-lg transition-all ${taskDisplayMode === 'list' ? 'bg-white text-blue-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}><ListChecks size={16}/> VISTA LISTA</button>
+                    <button onClick={() => setTaskDisplayMode('kanban')} className={`flex items-center gap-2 px-5 py-2 text-xs font-black rounded-lg transition-all ${taskDisplayMode === 'kanban' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200' : 'text-slate-500 hover:text-slate-700'}`}><Columns size={16}/> TABLERO KANBAN</button>
+                  </div>
+
+                  {taskDisplayMode === 'list' && (
+                    <div className="relative z-20">
+                      <button onClick={(e) => { e.stopPropagation(); setShowColumnManager(!showColumnManager); }} className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 flex items-center gap-2 text-sm font-bold shadow-sm active:scale-95">
+                        <Settings size={16} /> Columnas
+                      </button>
+                      <AnimatePresence>
+                        {showColumnManager && (
+                          <motion.div onClick={(e) => e.stopPropagation()} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute left-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+                            <div className="p-3 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase flex justify-between items-center">
+                              Personalizar Tabla
+                              <button onClick={() => setShowColumnManager(false)} className="text-slate-400 hover:text-slate-600"><X size={14}/></button>
+                            </div>
+                            <div className="p-2 space-y-1">
+                              {tableCols.map((col, idx) => (
+                                <div key={col.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg group">
+                                  <label className="flex items-center gap-2 cursor-pointer flex-1">
+                                    <input type="checkbox" checked={col.visible} onChange={() => toggleColumn(col.id)} className="rounded text-blue-600 border-slate-300 focus:ring-blue-500 w-4 h-4" />
+                                    <span className={`text-sm ${col.visible ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>{col.label}</span>
+                                  </label>
+                                  <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => moveColumn(idx, 'up')} disabled={idx === 0} className="text-slate-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ChevronDown size={14} className="rotate-180" /></button>
+                                    <button onClick={() => moveColumn(idx, 'down')} disabled={idx === tableCols.length - 1} className="text-slate-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ChevronDown size={14} /></button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 flex gap-4">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input type="text" placeholder="Buscar actividad..." className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                  </div>
+                  {taskDisplayMode === 'list' && (
+                    <select className="bg-white border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                      <option value="All">Todos los Estados</option>
+                      <option value="Planeado">Planeado</option>
+                      <option value="En curso">En curso</option>
+                      <option value="En espera">En espera</option>
+                      <option value="Atrasadas">Atrasadas ⚠️</option>
+                      <option value="Completado">Completado</option>
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {taskDisplayMode === 'kanban' ? (
+                <div className="flex gap-4 overflow-x-auto pb-4 h-[calc(100vh-300px)] items-start">
+                  {['Planeado', 'En curso', 'En espera', 'Completado'].map(colStatus => {
+                    const colTasks = filteredTasks.filter(t => t.estado === colStatus);
+                    let headerColor = 'bg-slate-100 text-slate-700 border-slate-200';
+                    let dotColor = 'bg-slate-400';
+                    if(colStatus === 'En curso') { headerColor = 'bg-indigo-50 text-indigo-700 border-indigo-200'; dotColor = 'bg-indigo-500'; }
+                    if(colStatus === 'En espera') { headerColor = 'bg-amber-50 text-amber-700 border-amber-200'; dotColor = 'bg-amber-500'; }
+                    if(colStatus === 'Completado') { headerColor = 'bg-emerald-50 text-emerald-700 border-emerald-200'; dotColor = 'bg-emerald-500'; }
+
+                    return (
+                      <div key={colStatus} className="flex-1 min-w-[300px] w-[300px] bg-slate-100/50 rounded-2xl flex flex-col border border-slate-200" onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, colStatus)}>
+                         <div className={`p-4 rounded-t-2xl border-b flex justify-between items-center ${headerColor}`}>
+                           <div className="flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-full ${dotColor}`}></span><h3 className="font-bold text-sm uppercase tracking-wider">{colStatus}</h3></div>
+                           <span className="text-xs font-black bg-white/50 px-2 py-0.5 rounded-md">{colTasks.length}</span>
+                         </div>
+                         <div className="p-3 flex-1 overflow-y-auto space-y-3 min-h-[150px]">
+                            {colTasks.length === 0 ? <div className="h-full flex items-center justify-center text-xs font-medium text-slate-400 italic border-2 border-dashed border-slate-200 rounded-xl py-8">Arrastra aquí</div> : (
+                              <AnimatePresence>
+                                {colTasks.map((task) => {
+                                  const globalIndex = filteredTasks.findIndex(t => t.id === task.id);
+                                  const isTaskLocked = task.estado === 'Completado' || task.estado === 'Cancelado';
+                                  const canEditTask = !!(currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked));
+                                  const taskProject = projects.find(p => p.id === task.proyecto_id);
+                                  const responsablesArray = task.responsable ? String(task.responsable).split(',').map(r => r.trim()) : [];
+
+                                  return (
+                                    <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 300, damping: 25 }} key={task.id} draggable={canEditTask ? "true" : "false"} onDragStart={(e) => handleDragStart(e as any, task)} onClick={() => { setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }} className={`relative bg-white p-4 rounded-xl shadow-sm border border-slate-200 transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing hover:border-blue-300 hover:shadow-md' : 'cursor-pointer hover:border-slate-300'}`}>
+                                      <div className={`absolute -top-2 -right-2 w-7 h-7 rounded-full flex items-center justify-center text-xs shadow-md border ${globalIndex === 0 ? 'bg-yellow-100 border-yellow-300 text-lg' : globalIndex === 1 ? 'bg-slate-100 border-slate-300 text-lg' : globalIndex === 2 ? 'bg-orange-100 border-orange-300 text-lg' : 'bg-white border-slate-200 z-10'}`}>
+                                        {globalIndex === 0 ? '🏆' : globalIndex === 1 ? '🥈' : globalIndex === 2 ? '🥉' : <span className="font-black text-slate-500">#{globalIndex + 1}</span>}
+                                      </div>
+                                      <div className="flex justify-between items-start mb-2.5 pr-4"><span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${getPriorityColor(task.prioridad)}`}>{getPriorityLabel(task.prioridad)}</span></div>
+                                      <h4 className="text-sm font-bold text-slate-800 mb-1 leading-snug line-clamp-2">{task.actividad}</h4>
+                                      {taskProject && <div className="text-[10px] font-bold text-indigo-500 mb-3 flex items-center gap-1 line-clamp-1"><FolderKanban size={12}/> {taskProject.nombre}</div>}
+                                      <div className="flex items-center justify-between mt-4">
+                                        <div className="flex -space-x-1.5">{responsablesArray.slice(0, 3).map((resp, idx) => <div key={idx} className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center text-[9px] font-bold uppercase border border-white shadow-sm" title={resp}>{String(resp).charAt(0)}</div>)}</div>
+                                        <div className="flex items-center gap-2"><div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden"><div className={`h-full ${getProgressBarColor(task.porcentaje_avance)}`} style={{width: `${task.porcentaje_avance}%`}}></div></div><span className="text-[10px] font-bold text-slate-500">{task.porcentaje_avance}%</span></div>
+                                      </div>
+                                    </motion.div>
+                                  );
+                                })}
+                              </AnimatePresence>
+                            )}
+                         </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-x-auto p-2">
+                  <table className="w-full text-left border-collapse min-w-[800px]">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-white">
+                        {tableCols.filter(c => c.visible).map(col => (
+                          <th key={col.id} className={`px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest ${col.id === 'orden' || col.id === 'acciones' ? 'text-center' : ''}`}>{col.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50 relative">
+                      <AnimatePresence>
+                        {filteredTasks.length === 0 ? (
+                          <tr><td colSpan={tableCols.filter(c => c.visible).length} className="px-6 py-8 text-center text-slate-400 text-sm">No hay tareas.</td></tr>
+                        ) : (
+                          filteredTasks.map((task, index) => {
+                             const isTaskSubExpanded = expandedTaskSubtasks.has(task.id!);
+                             const totalSubtasks = task.subtasks?.length || 0;
+                             const canView = canViewSubtasks(String(task.responsable));
+                             const canToggle = canToggleSubtasks(String(task.responsable));
+
+                             return (
+                              <React.Fragment key={task.id}>
+                                <motion.tr layout initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 25 }} className={`hover:bg-slate-50 transition-colors group ${task.estado === 'Completado' ? 'bg-emerald-50/10' : ''}`}>
+                                  {tableCols.filter(c => c.visible).map(col => renderDynamicCell(col.id, task, index, false))}
+                                </motion.tr>
+                                {isTaskSubExpanded && totalSubtasks > 0 && canView && (
+                                   <tr>
+                                     <td colSpan={tableCols.filter(c => c.visible).length} className="p-0 border-b border-slate-100 bg-slate-50/50">
+                                       <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                          <div className="px-8 py-3"><div className="space-y-2 border-l-2 border-indigo-200 pl-4 py-1 ml-2">{task.subtasks.map((st: any) => (<div key={st.id} className="flex items-center gap-2"><button disabled={!canToggle} onClick={(e) => { e.stopPropagation(); canToggle && handleToggleSubtask(st.id, st.completada); }} className={`transition-colors ${st.completada ? 'text-emerald-500' : 'text-slate-300'} ${canToggle ? 'hover:text-blue-500 cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>{st.completada ? <CheckSquare size={16} /> : <Square size={16} />}</button><span className={`text-xs ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>{st.titulo}</span></div>))}</div></div>
+                                       </motion.div>
+                                     </td>
+                                   </tr>
+                                )}
+                              </React.Fragment>
+                             );
+                          })
+                        )}
+                      </AnimatePresence>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+
+          {currentView === 'projects' && (
+            <div className="w-full space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Activos</span><span className="text-2xl font-black text-slate-900">{activeProjectsCount}</span></div>
+                 <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-center"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Completados</span><span className="text-2xl font-black text-emerald-600">{completedProjectsCount}</span></div>
+                 <div className={`p-4 rounded-2xl border shadow-sm flex flex-col justify-center ${overdueProjectsCount > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}><span className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${overdueProjectsCount > 0 ? 'text-red-600' : 'text-slate-400'}`}>Atrasados</span><span className={`text-2xl font-black ${overdueProjectsCount > 0 ? 'text-red-600' : 'text-slate-900'}`}>{overdueProjectsCount}</span></div>
+                 <div className="bg-blue-600 p-4 rounded-2xl border border-blue-700 shadow-sm flex flex-col justify-center"><span className="text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-1">Avance Global</span><span className="text-2xl font-black text-white">{globalProjectProgressRaw.toFixed(1)}%</span></div>
+              </div>
+
+              {projects.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm bg-white rounded-2xl border border-slate-200">No hay proyectos registrados. Crea uno nuevo para comenzar.</div> : (
+                <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6 items-start">
+                  {projects.map(project => {
+                    const isExpanded = expandedProjects.has(project.id!);
+                    const projectTasks = tasks.filter(t => t.proyecto_id === project.id);
+                    const progressRaw = projectTasks.length > 0 ? (projectTasks.reduce((acc, t) => acc + (Number(t.porcentaje_avance) || 0), 0) / projectTasks.length) : 0;
+                    const lider = allUsers.find(u => u.id === project.lider_id);
+                    const liderName = lider ? `${lider.nombre} ${lider.apellido}` : 'Sin líder asignado';
+                    const projectOverdueDays = project.estado === 'Activo' ? getDaysOverdue(project.fecha_fin || '', project.estado) : 0;
+
+                    return (
+                      <div key={project.id} className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${project.prioritario ? 'border-orange-300 ring-1 ring-orange-100' : 'border-slate-200'}`}>
+                        <div className="p-5 flex items-center justify-between cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => toggleProject(project.id!)}>
+                          <div className="flex items-center gap-4 flex-1">
+                            <div className={`p-3 rounded-xl ${projectOverdueDays > 0 ? 'bg-red-50 text-red-600' : project.prioritario ? 'bg-orange-50 text-orange-600' : 'bg-indigo-50 text-indigo-600'}`}><FolderKanban size={20}/></div>
+                            <div>
+                              <div className="flex items-center gap-2"><h3 className="font-bold text-slate-900 text-lg">{project.nombre}</h3>{project.prioritario && <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded uppercase tracking-tighter">🔥 Prioritario</span>}{projectOverdueDays > 0 && <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-tighter">⚠️ Atrasado</span>}</div>
+                              <p className="text-xs text-slate-500 line-clamp-1">{project.descripcion || 'Sin descripción'}</p>
+                              <div className="flex items-center gap-1 mt-1 text-[10px] font-bold text-slate-400 uppercase"><UserIcon size={10} /> Líder: <span className="text-indigo-500">{liderName}</span></div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-8">
+                            <div className="hidden md:block text-right"><span className={`text-[10px] font-black uppercase px-2 py-1 rounded-md border ${getStatusColor(project.estado)}`}>{project.estado}</span><div className={`text-[10px] mt-1 font-bold ${projectOverdueDays > 0 ? 'text-red-500' : 'text-slate-400'}`}>{project.fecha_inicio} / {project.fecha_fin}</div></div>
+                            <div className="w-32 flex flex-col gap-1"><div className="flex justify-between text-[10px] font-bold text-slate-500"><span>Avance</span><span>{progressRaw.toFixed(0)}%</span></div><div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(progressRaw)}`} style={{ width: `${progressRaw}%` }} /></div></div>
+                            <div className="flex items-center gap-2">
+                              {(currentUser?.is_admin || currentUser?.perm_projects_edit) && <button onClick={(e) => { e.stopPropagation(); setEditingItem(project); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"><Edit2 size={16}/></button>}
+                              {(currentUser?.is_admin || currentUser?.perm_projects_delete) && <button onClick={(e) => { e.stopPropagation(); handleDelete(project.id!, 'projects'); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"><Trash2 size={16}/></button>}
+                              <ChevronDown size={20} className={`text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </div>
+                          </div>
+                        </div>
+
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="border-t border-slate-100 bg-slate-50/50">
+                              <div className="p-4">
+                                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><FileText size={12} /> Tareas Asociadas ({projectTasks.length})</h4>
+                                {projectTasks.length === 0 ? <p className="text-xs text-slate-400 italic">No hay tareas asignadas a este proyecto.</p> : (
+                                  <div className="space-y-2 mb-4">
+                                    {projectTasks.map(t => {
+                                      const tOverdue = getDaysOverdue(t.fecha_fin, t.estado);
+                                      const isTaskSubExpanded = expandedTaskSubtasks.has(t.id!);
+                                      const totalSubtasks = t.subtasks?.length || 0;
+                                      const completedSubtasks = t.subtasks?.filter((st: any) => st.completada).length || 0;
+                                      const canView = canViewSubtasks(String(t.responsable));
+                                      const canToggle = canToggleSubtasks(String(t.responsable));
+
+                                      return (
+                                        <div key={t.id} className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-200 transition-colors group mb-2">
+                                          <div className="flex items-center justify-between p-3">
+                                            <div className="flex flex-col gap-1 w-1/3 min-w-[200px]"><span className="text-sm font-bold text-slate-800 line-clamp-1" title={t.actividad}>{t.actividad}</span><div className="flex items-center gap-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${getPriorityColor(t.prioridad)}`}>{getPriorityLabel(t.prioridad)}</span><span className={`text-[10px] font-bold ${tOverdue > 0 ? 'text-red-500' : 'text-slate-400'}`}>{t.fecha_fin} {tOverdue > 0 && '⚠️'}</span></div></div>
+                                            <div className="flex-1 px-4 flex items-center gap-3 justify-center"><div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(t.porcentaje_avance)}`} style={{ width: `${t.porcentaje_avance}%` }} /></div><span className={`text-[10px] font-bold w-6 text-right ${getProgressTextColor(t.porcentaje_avance)}`}>{t.porcentaje_avance}%</span></div>
+                                            <div className="flex items-center gap-4 justify-end w-1/3"><span className={`text-[9px] font-black px-2 py-1 rounded uppercase ${getStatusColor(t.estado)}`}>{t.estado}</span><div className="flex items-center gap-1.5" title={String(t.responsable)}><div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] uppercase border border-slate-200">{String(t.responsable || 'U').charAt(0)}</div><span className="text-[10px] font-bold text-slate-500 uppercase hidden sm:block w-16 truncate">{String(t.responsable || 'Usuario').split(' ')[0]}</span></div><button onClick={() => { setSelectedTask(t); setDetailsTab('subtasks'); setIsDetailsModalOpen(true); fetchTaskDetails(t.id!); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Ver Detalles"><Eye size={16} /></button></div>
+                                          </div>
+                                          {totalSubtasks > 0 && canView && (
+                                            <>
+                                              <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-1.5 flex items-center"><button onClick={() => toggleTaskSubtasksExpand(t.id!)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 hover:text-blue-600 transition-colors w-max"><ChevronDown size={14} className={`transition-transform ${isTaskSubExpanded ? 'rotate-180' : ''}`} /> ↳ Subtareas ({completedSubtasks}/{totalSubtasks})</button></div>
+                                              <AnimatePresence>
+                                                {isTaskSubExpanded && (<motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-4 pb-3 pt-1 border-t border-slate-100 bg-slate-50 overflow-hidden">{t.subtasks?.map((st: any) => (<div key={st.id} className="flex items-center gap-2 py-1.5 border-b border-slate-100/50 last:border-0"><button disabled={!canToggle} onClick={(e) => { e.stopPropagation(); canToggle && handleToggleSubtask(st.id, st.completada); }} className={`transition-colors ${st.completada ? 'text-emerald-500' : 'text-slate-300'} ${canToggle ? 'hover:text-blue-500 cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>{st.completada ? <CheckSquare size={14} /> : <Square size={14} />}</button><span className={`text-xs ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>{st.titulo}</span></div>))}</motion.div>)}
+                                              </AnimatePresence>
+                                            </>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                                {currentUser?.can_create_tasks && <button onClick={() => { setEditingItem(null); setPreselectedProjectId(project.id!); setCurrentView('tasks'); setIsModalOpen(true); }} className="flex items-center gap-2 text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors w-max shadow-sm"><Plus size={14} /> Añadir Tarea a este Proyecto</button>}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+        {currentView === 'control' && (
+            <>
+              <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Filtro Maestro por Área</h3>
+                    <p className="text-sm text-slate-500">Selecciona un área para visualizar todas sus actividades</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Filter className="text-slate-400" size={20} />
+                    <select className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[240px]" value={controlAreaId || ''} onChange={(e) => setControlAreaId(e.target.value ? parseInt(e.target.value) : null)}>
+                      <option value="">Todas las Áreas Autorizadas</option>
+                      {areas.filter(a => {
+                        if (currentUser?.is_admin) return true;
+                        const autorizadas = currentUser?.areas_autorizadas ? String(currentUser.areas_autorizadas).split(',') : [];
+                        return autorizadas.includes(a.id!.toString());
+                      }).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 mt-6 pt-6 border-t border-slate-100">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                    <input type="text" placeholder="Buscar actividad en supervisión..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                  </div>
+                  <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                    <option value="All">Todos los Estados</option>
+                    <option value="Planeado">Planeado</option>
+                    <option value="En curso">En curso</option>
+                    <option value="En espera">En espera</option>
+                    <option value="Atrasadas">Atrasadas ⚠️</option>
+                    <option value="Completado">Completado</option>
+                  </select>
+                </div>
+              </div>
+              
+              <ChartsSection data={filteredControlTasks} />
+              
+              <div className="flex justify-end mb-4 relative z-20">
+                <button onClick={(e) => { e.stopPropagation(); setShowColumnManager(!showColumnManager); }} className="px-4 py-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 flex items-center gap-2 text-xs font-bold shadow-sm active:scale-95">
+                  <Settings size={14} /> Columnas
+                </button>
+                <AnimatePresence>
+                  {showColumnManager && (
+                    <motion.div onClick={(e) => e.stopPropagation()} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 mt-10 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden z-50">
+                      <div className="p-3 bg-slate-50 border-b border-slate-100 text-xs font-bold text-slate-500 uppercase flex justify-between items-center">
+                        Personalizar Tabla
+                        <button onClick={() => setShowColumnManager(false)} className="text-slate-400 hover:text-slate-600"><X size={14}/></button>
+                      </div>
+                      <div className="p-2 space-y-1">
+                        {tableCols.map((col, idx) => (
+                          <div key={col.id} className="flex items-center justify-between p-2 hover:bg-slate-50 rounded-lg group">
+                            <label className="flex items-center gap-2 cursor-pointer flex-1">
+                              <input type="checkbox" checked={col.visible} onChange={() => toggleColumn(col.id)} className="rounded text-blue-600 border-slate-300 focus:ring-blue-500 w-4 h-4" />
+                              <span className={`text-sm ${col.visible ? 'text-slate-700 font-medium' : 'text-slate-400'}`}>{col.label}</span>
+                            </label>
+                            <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => moveColumn(idx, 'up')} disabled={idx === 0} className="text-slate-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ChevronDown size={14} className="rotate-180" /></button>
+                              <button onClick={() => moveColumn(idx, 'down')} disabled={idx === tableCols.length - 1} className="text-slate-400 hover:text-blue-600 disabled:opacity-30 p-0.5"><ChevronDown size={14} /></button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              {filteredControlTasks.length > 0 ? (
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-x-auto p-2">
+                  <table className="w-full text-left border-collapse min-w-[800px]">
+                    <thead>
+                      <tr className="border-b border-slate-100 bg-white">
+                        {tableCols.filter(c => c.visible).map(col => (
+                          <th key={col.id} className={`px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest ${col.id === 'orden' || col.id === 'acciones' ? 'text-center' : ''}`}>{col.label}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      <AnimatePresence>
+                        {filteredControlTasks.map((task, index) => {
+                           const isTaskSubExpanded = expandedTaskSubtasks.has(task.id!);
+                           const totalSubtasks = task.subtasks?.length || 0;
+                           const canView = canViewSubtasks(String(task.responsable));
+                           const canToggle = canToggleSubtasks(String(task.responsable));
+
+                           return (
+                            <React.Fragment key={task.id}>
+                              <motion.tr layout initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ type: "spring", stiffness: 300, damping: 25 }} className="hover:bg-slate-50 transition-colors">
+                                {tableCols.filter(c => c.visible).map(col => renderDynamicCell(col.id, task, index, true))}
+                              </motion.tr>
+                              {isTaskSubExpanded && totalSubtasks > 0 && canView && (
+                                 <tr>
+                                   <td colSpan={tableCols.filter(c => c.visible).length} className="p-0 border-b border-slate-100 bg-slate-50/50">
+                                     <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                        <div className="px-8 py-3"><div className="space-y-2 border-l-2 border-indigo-200 pl-4 py-1 ml-2">{task.subtasks.map((st: any) => (<div key={st.id} className="flex items-center gap-2"><button disabled={!canToggle} onClick={(e) => { e.stopPropagation(); canToggle && handleToggleSubtask(st.id, st.completada); }} className={`transition-colors ${st.completada ? 'text-emerald-500' : 'text-slate-300'} ${canToggle ? 'hover:text-blue-500 cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>{st.completada ? <CheckSquare size={16} /> : <Square size={16} />}</button><span className={`text-xs ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>{st.titulo}</span></div>))}</div></div>
+                                     </motion.div>
+                                   </td>
+                                 </tr>
+                              )}
+                            </React.Fragment>
+                           );
+                        })}
+                      </AnimatePresence>
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                 <div className="p-8 text-center text-slate-400 text-sm mt-6 bg-white rounded-2xl border border-slate-200">No hay tareas para supervisar en esta área.</div>
+              )}
+            </>
+          )}
+
+          {currentView === 'users' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {allUsers.length === 0 ? <div className="col-span-full p-8 text-center text-slate-400 text-sm">No hay usuarios para mostrar.</div> : (
+                allUsers.map(user => {
+                  const areaName = areas.find(a => a.id === user.area_id)?.nombre || (user as any).area_nombre || 'Sin Área';
+                  return (
+                    <div key={user.id} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-all group relative">
+                       <div className="flex items-start justify-between mb-4">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${user.is_admin ? 'bg-red-100 text-red-600 shadow-sm shadow-red-100' : 'bg-slate-100 text-slate-400'}`}>{user.is_admin ? <Shield size={24} /> : <UserIcon size={24} />}</div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {(currentUser?.is_admin || currentUser?.perm_users_edit) && <button onClick={() => { setEditingItem(user); setIsModalOpen(true); }} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Edit2 size={14} /></button>}
+                          {(currentUser?.is_admin || currentUser?.perm_users_delete) && <button onClick={() => handleDelete(user.id!, 'users')} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={14} /></button>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mb-1"><h3 className="font-bold text-slate-900">{user.nombre} {user.apellido}</h3>{user.is_admin ? <span className="text-[8px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">Admin</span> : null}</div>
+                      <p className="text-xs text-slate-500 mb-4">{user.cargo} • {areaName}</p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+          
+          {currentView === 'areas' && (
+             <div className="max-w-3xl">
+               {areas.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm bg-white rounded-2xl border border-slate-200">No hay áreas creadas o hubo un problema al cargarlas desde el servidor.</div> : renderAreaTree()}
+             </div>
+          )}
+        </div>
+      </main>
+
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 className="text-lg font-bold text-slate-900">{editingItem ? 'Editar' : 'Nuevo'} {(currentView === 'tasks' || currentView === 'control') ? 'Tarea' : currentView === 'users' ? 'Usuario' : currentView === 'projects' ? 'Proyecto' : 'Área'}</h3>
+                <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600"><X size={20} /></button>
+              </div>
+
+              <form onSubmit={(currentView === 'tasks' || currentView === 'control') ? handleTaskSubmit : currentView === 'users' ? handleUserSubmit : currentView === 'projects' ? handleProjectSubmit : handleAreaSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto bg-slate-50">
+                
+                {(currentView === 'tasks' || currentView === 'control') && (
+                  <div className="space-y-6">
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">1. Identificación Básica</h4>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Actividad</label>
+                        <input name="actividad" required defaultValue={editingItem?.actividad} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Proyecto / Iniciativa</label>
+                          <select name="proyecto_id" defaultValue={editingItem?.proyecto_id || preselectedProjectId || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 text-indigo-700 font-medium">
+                            <option value="">Ninguno</option>
+                            {projects.filter(p => p.estado === 'Activo').map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Área / Origen</label>
+                          <select name="area_origen_id" defaultValue={editingItem?.area_origen_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
+                            <option value="">Selecciona un área</option>
+                            {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Tipo</label>
+                          <input name="tipo" placeholder="Ej: Mejora, Soporte, Desarrollo..." defaultValue={editingItem?.tipo} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Temática</label>
+                          <input name="tematica" placeholder="Ej: Facturación Electrónica" defaultValue={editingItem?.tematica} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">2. Asignación y Tiempos</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Gerente / Jefe Responsable</label>
+                          <select name="gerente_responsable" defaultValue={editingItem?.gerente_responsable || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
+                            <option value="">Sin Asignar</option>
+                            {allUsers.map(u => <option key={u.id} value={`${u.nombre} ${u.apellido}`}>{u.nombre} {u.apellido}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase flex justify-between items-center">
+                            <span>Ejecutores ({selectedResponsibles.length})</span>
+                          </label>
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col gap-2">
+                              <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                                <input type="text" placeholder="Buscar usuario..." className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-blue-400" value={userSearchTerm} onChange={(e) => setUserSearchTerm(e.target.value)} />
+                              </div>
+                              <div className="max-h-24 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                  {allUsers.filter(u => `${u.nombre} ${u.apellido}`.toLowerCase().includes(userSearchTerm.toLowerCase())).map(u => {
+                                      const fullName = `${u.nombre} ${u.apellido}`;
+                                      const isSelected = selectedResponsibles.includes(fullName);
+                                      return (
+                                          <div key={u.id} onClick={() => toggleResponsible(fullName)} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors border ${isSelected ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-transparent hover:border-slate-200 text-slate-600'}`}>
+                                              {isSelected ? <CheckSquare size={16} className="text-blue-600"/> : <Square size={16} className="text-slate-400"/>}
+                                              <span className="text-xs font-bold truncate" title={fullName}>{fullName}</span>
+                                          </div>
+                                      )
+                                  })}
+                              </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Registro</label>
+                          <input name="fecha_registro" type="date" readOnly defaultValue={editingItem?.fecha_registro || new Date().toISOString().split('T')[0]} className="w-full px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl outline-none cursor-not-allowed text-slate-500" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Inicio</label>
+                          <input name="fecha_inicio" type="date" required defaultValue={editingItem?.fecha_inicio} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Compromiso</label>
+                          <input name="fecha_fin" type="date" required defaultValue={editingItem?.fecha_fin} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Compromiso Semanal</label>
+                        <textarea name="compromiso_semanal" rows={2} placeholder="Meta de la semana..." defaultValue={editingItem?.compromiso_semanal} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none" />
+                      </div>
+                    </div>
+
+                    <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm space-y-4">
+                      <h4 className="text-xs font-black text-indigo-800 uppercase tracking-widest mb-2 border-b border-indigo-200 pb-2">3. Métricas y Evaluación (Matriz)</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Alineación Estratégica</label>
+                          <select name="alineacion_estrategica" defaultValue={editingItem?.alineacion_estrategica || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
+                            <option value="">Seleccione una opción</option>
+                            <option value="WIG 1 Crecimiento de Ingresos">WIG 1 Crecimiento de Ingresos</option>
+                            <option value="WIG 2 Reducción y control del costo">WIG 2 Reducción y control del costo</option>
+                            <option value="WIG 3 Satisfacción del cliente">WIG 3 Satisfacción del cliente</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1 flex flex-col justify-end">
+                           <label className="flex items-center gap-3 p-2 bg-white rounded-xl border border-indigo-200 cursor-pointer hover:bg-indigo-100 transition-colors h-[38px]">
+                             <input type="checkbox" name="requiere_inversion" defaultChecked={editingItem?.requiere_inversion} className="w-4 h-4 text-indigo-600 rounded border-indigo-300" />
+                             <span className="text-sm font-bold text-indigo-900">Requiere Inversión Económica</span>
+                           </label>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Impacto Financiero/Operativo</label>
+                          <select name="impacto" defaultValue={editingItem?.impacto || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
+                            <option value="">Seleccione una opción</option>
+                            <option value="1. Bajo">1. Bajo</option>
+                            <option value="2. Medio">2. Medio</option>
+                            <option value="3. Alto">3. Alto</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Viabilidad Técnica</label>
+                          <select name="viabilidad_tecnica" defaultValue={editingItem?.viabilidad_tecnica || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
+                            <option value="">Seleccione una opción</option>
+                            <option value="1. Alta Complejidad">1. Alta Complejidad</option>
+                            <option value="2. Media Complejidad">2. Media Complejidad</option>
+                            <option value="3. Baja Complejidad">3. Baja Complejidad</option> 
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Calificación Total</label>
+                          <div className="w-full px-4 py-2 bg-indigo-100/50 border border-indigo-200 rounded-xl text-indigo-400 text-sm font-medium italic">
+                            {editingItem?.calificacion ? `⭐ ${editingItem.calificacion} Puntos` : 'Automático'}
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Orden de Ejecución (Manual)</label>
+                          <input name="orden_ejecucion" type="number" min="1" placeholder="Ej: 1" defaultValue={editingItem?.orden_ejecucion || ''} className="w-full px-4 py-2 bg-white border border-indigo-400 rounded-xl outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 font-bold text-indigo-900 shadow-sm" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">4. Control y Estado</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Prioridad</label>
+                          <select name="prioridad" defaultValue={editingItem?.prioridad || '2|Media'} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
+                            <option value="0|Muy Alta">Muy Alta</option><option value="1|Alta">Alta</option><option value="2|Media">Media</option><option value="3|Baja">Baja</option><option value="4|Muy Baja">Muy Baja</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Estado</label>
+                          <select name="estado" defaultValue={editingItem?.estado || 'Planeado'} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
+                            {(!editingItem || editingItem.estado === 'Planeado' || currentUser?.is_admin) && <option value="Planeado">Planeado</option>}
+                            <option value="En curso">En curso</option>
+                            <option value="En espera">En espera</option>
+                            <option value="Completado">Completado</option>
+                            {editingItem && <option value="Cancelado">Cancelado</option>}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">% Avance Actual</label>
+                          <input name="porcentaje_avance" type="number" min="0" max="100" required defaultValue={editingItem?.porcentaje_avance || 0} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Dependencia (Prerequisito)</label>
+                          <textarea name="prerequisito" rows={2} defaultValue={editingItem?.prerequisito} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Observaciones</label>
+                          <textarea name="observacion" rows={2} defaultValue={editingItem?.observacion} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {currentView === 'projects' && (
+                  <>
+                    <div className="space-y-1 mb-4">
+                       <label className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl border border-orange-200 cursor-pointer hover:bg-orange-100 transition-colors">
+                         <input type="checkbox" name="prioritario" defaultChecked={editingItem?.prioritario} className="w-5 h-5 text-orange-600 rounded border-orange-300" />
+                         <span className="text-sm font-bold text-orange-800">Marcar como Proyecto Prioritario 🔥</span>
+                       </label>
+                    </div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Nombre del Proyecto</label><input name="nombre" required defaultValue={editingItem?.nombre} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" /></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Descripción</label><textarea name="descripcion" rows={3} defaultValue={editingItem?.descripcion} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 resize-none" /></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Líder del Proyecto</label><select name="lider_id" defaultValue={editingItem?.lider_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"><option value="">Sin Asignar</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre} {u.apellido}</option>)}</select></div>
+                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Inicio</label><input name="fecha_inicio" type="date" defaultValue={editingItem?.fecha_inicio} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Fin Estimada</label><input name="fecha_fin" type="date" defaultValue={editingItem?.fecha_fin} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" /></div></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Estado</label><select name="estado" defaultValue={editingItem?.estado || 'Activo'} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"><option value="Activo">Activo</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select></div>
+                  </>
+                )}
+
+                {currentView === 'users' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Nombre</label><input name="nombre" required defaultValue={editingItem?.nombre} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Apellido</label><input name="apellido" required defaultValue={editingItem?.apellido} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div></div>
+                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Email</label><input name="email" type="email" required defaultValue={editingItem?.email} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Contraseña {editingItem && '(Dejar vacío si no cambia)'}</label><input name="password" type="password" required={!editingItem} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div></div>
+                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Cargo</label><input name="cargo" required defaultValue={editingItem?.cargo} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Área</label><select name="area_id" defaultValue={editingItem?.area_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"><option value="">Sin Área</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></div></div>
+                    {formJefe && <div className="p-3 bg-blue-50 text-blue-700 rounded-xl text-sm font-medium border border-blue-100 flex items-center gap-2"><Shield size={16} /> Jefe Directo Calculado: <span className="font-bold">{formJefe}</span></div>}
+                    <div className="space-y-4 pt-4 border-t border-slate-100">
+                      <h4 className="font-bold text-slate-900 text-sm">Permisos y Accesos</h4>
+                      <div className="flex flex-col gap-3">
+                         <label className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200 cursor-pointer hover:bg-amber-100"><input type="checkbox" name="debe_cambiar_password" defaultChecked={editingItem?.debe_cambiar_password} className="w-5 h-5 text-amber-600 rounded border-amber-300" /><span className="text-sm font-bold text-amber-800">Exigir cambio de contraseña al ingresar</span></label>
+                         <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100"><input type="checkbox" name="is_admin" defaultChecked={editingItem?.is_admin} className="w-5 h-5 text-blue-600 rounded" /><span className="text-sm font-bold text-slate-700">Administrador Total del Sistema</span></label>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Tareas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="can_create_tasks" defaultChecked={editingItem?.can_create_tasks} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="can_edit_tasks" defaultChecked={editingItem?.can_edit_tasks} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="can_delete_tasks" defaultChecked={editingItem?.can_delete_tasks} className="rounded text-blue-600" /> Eliminar</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Subtareas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_view" defaultChecked={editingItem?.perm_subtasks_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_create" defaultChecked={editingItem?.perm_subtasks_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_edit" defaultChecked={editingItem?.perm_subtasks_edit} className="rounded text-blue-600" /> Marcar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_delete" defaultChecked={editingItem?.perm_subtasks_delete} className="rounded text-blue-600" /> Eliminar</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Proyectos</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_view" defaultChecked={editingItem?.perm_projects_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_create" defaultChecked={editingItem?.perm_projects_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_edit" defaultChecked={editingItem?.perm_projects_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_delete" defaultChecked={editingItem?.perm_projects_delete} className="rounded text-blue-600" /> Eliminar</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Reportes</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_reports_view" defaultChecked={editingItem?.perm_reports_view} className="rounded text-indigo-600" /> Ver Reportes</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Usuarios</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_view" defaultChecked={editingItem?.perm_users_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_create" defaultChecked={editingItem?.perm_users_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_edit" defaultChecked={editingItem?.perm_users_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_delete" defaultChecked={editingItem?.perm_users_delete} className="rounded text-blue-600" /> Eliminar</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Áreas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_view" defaultChecked={editingItem?.perm_areas_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_create" defaultChecked={editingItem?.perm_areas_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_edit" defaultChecked={editingItem?.perm_areas_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_delete" defaultChecked={editingItem?.perm_areas_delete} className="rounded text-blue-600" /> Eliminar</label></div>
+                      </div>
+
+                      <div className="p-4 border border-slate-200 rounded-xl bg-white space-y-3 shadow-sm">
+                         <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={accesoSupervision} onChange={(e) => setAccesoSupervision(e.target.checked)} className="w-5 h-5 text-blue-600 rounded" /><span className="text-sm font-bold text-slate-700">Otorgar acceso a "Control de Gestión"</span></label>
+                         
+                         {/* FIX 2: Checkbox para habilitar edición en Control de Gestión */}
+                         {accesoSupervision && (
+                           <label className="flex items-center gap-3 cursor-pointer mt-2 pl-8">
+                             <input type="checkbox" name="perm_control_edit" defaultChecked={editingItem?.perm_control_edit} className="w-5 h-5 text-indigo-600 rounded border-indigo-300" />
+                             <span className="text-sm font-bold text-indigo-700">Permitir EDITAR tareas desde la vista de Control de Gestión</span>
+                           </label>
+                         )}
+
+                         {accesoSupervision && (
+                           <div className="pl-8 space-y-2 mt-2 border-t border-slate-100 pt-3">
+                             <span className="text-[10px] font-bold text-slate-400 uppercase block mb-2">Selecciona las áreas que puede supervisar:</span>
+                             <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-2">
+                               {areas.map(a => (<label key={a.id} className="flex items-center gap-2 text-sm p-2 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-200 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" checked={selectedAreas.includes(a.id!)} onChange={(e) => { if (e.target.checked) setSelectedAreas(prev => [...prev, a.id!]); else setSelectedAreas(prev => prev.filter(id => id !== a.id!)); }} />{a.nombre}</label>))}
+                             </div>
+                           </div>
+                         )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {currentView === 'areas' && (
+                  <>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Nombre del Área</label><input name="nombre" required defaultValue={editingItem?.nombre} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Descripción</label><textarea name="descripcion" required rows={3} defaultValue={editingItem?.descripcion} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none" /></div>
+                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Área Padre (Opcional)</label><select name="parent_area_id" defaultValue={editingItem?.parent_area_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"><option value="">Ninguna (Nivel Raíz)</option>{areas.filter(a => a.id !== editingItem?.id).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Jefe de Área (Opcional)</label><select name="jefe_id" defaultValue={editingItem?.jefe_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"><option value="">Sin Asignar</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre} {u.apellido}</option>)}</select></div></div>
+                  </>
+                )}
+                
+                {currentView !== 'tasks' && currentView !== 'control' && currentView !== 'users' && currentView !== 'areas' && currentView !== 'projects' && (
+                  <p className="text-center text-sm text-slate-500 py-8">Formulario de administración {currentView}</p>
+                )}
+
+              <div className="pt-6 flex gap-3">
+                  <button 
+                    type="submit" 
+                    disabled={isSubmitting} 
+                    className={`flex-1 text-white py-3 rounded-xl font-bold transition-all shadow-lg ${isSubmitting ? 'bg-blue-400 cursor-not-allowed shadow-none' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100 active:scale-95'}`}
+                  >
+                    {isSubmitting ? 'Guardando...' : (editingItem ? 'Guardar Cambios' : 'Crear Registro')}
+                  </button>
+                  
+                  <button 
+                    type="button" 
+                    disabled={isSubmitting}
+                    onClick={() => setIsModalOpen(false)} 
+                    className={`px-6 py-3 rounded-xl font-bold transition-all ${isSubmitting ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isDetailsModalOpen && selectedTask && (
+           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+                   <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-slate-50/50">
+                     <div>
+                       <div className="flex items-center gap-3 mb-1"><h3 className="text-xl font-black text-slate-900">{selectedTask.actividad}</h3><span className={`text-[10px] font-bold px-2 py-1 rounded-md border uppercase ${getStatusColor(selectedTask.estado)}`}>{selectedTask.estado}</span></div>
+                     </div>
+                     <button onClick={() => setIsDetailsModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button>
+                   </div>
+                   
+                   <div className="flex border-b border-slate-100 px-6 bg-white shrink-0">
+                      <button onClick={() => setDetailsTab('subtasks')} className={`px-4 py-3 text-sm font-bold transition-all border-b-2 ${detailsTab === 'subtasks' ? 'text-indigo-600 border-indigo-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}><div className="flex items-center gap-2"><ListChecks size={16} /> Subtareas</div></button>
+                      <button onClick={() => setDetailsTab('comments')} className={`px-4 py-3 text-sm font-bold transition-all border-b-2 ${detailsTab === 'comments' ? 'text-blue-600 border-blue-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}><div className="flex items-center gap-2"><Activity size={16} /> Registro de Avances</div></button>
+                      <button onClick={() => setDetailsTab('attachments')} className={`px-4 py-3 text-sm font-bold transition-all border-b-2 ${detailsTab === 'attachments' ? 'text-emerald-600 border-emerald-600' : 'text-slate-400 border-transparent hover:text-slate-600'}`}><div className="flex items-center gap-2"><Paperclip size={16} /> Evidencias</div></button>
+                   </div>
+                   
+                   <div className="flex-1 overflow-y-auto p-6">
+                      {detailsTab === 'subtasks' && (
+                         <div className="flex flex-col h-[50vh]">
+                            <div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-2">
+                               {(!selectedTask.subtasks || selectedTask.subtasks.length === 0) ? (
+                                  <div className="flex flex-col items-center justify-center h-full text-slate-400"><ListChecks size={32} className="mb-2 opacity-50" /><span className="text-sm font-medium">No hay subtareas registradas en esta actividad</span></div>
+                               ) : (
+                                  selectedTask.subtasks.map((st: any) => {
+                                     const canToggle = canToggleSubtasks(String(selectedTask.responsable));
+                                     const canDelete = canDeleteSubtasks();
+                                     return (
+                                     <div key={st.id} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors">
+                                        <button disabled={!canToggle} onClick={() => canToggle && handleToggleSubtask(st.id, st.completada)} className={`transition-colors ${st.completada ? 'text-emerald-500' : 'text-slate-300'} ${canToggle ? 'hover:text-blue-500 cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>{st.completada ? <CheckSquare size={20} /> : <Square size={20} />}</button>
+                                        <span className={`flex-1 text-sm ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-bold'}`}>{st.titulo}</span>
+                                        {canDelete && <button onClick={() => handleDeleteSubtask(st.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded-md transition-colors" title="Eliminar"><Trash2 size={16}/></button>}
+                                        {!canDelete && !canToggle && <Lock size={14} className="text-slate-300" title="Sin permisos de modificación" />}
+                                     </div>
+                                     );
+                                  })
+                               )}
+                            </div>
+                            {canCreateSubtasks() && (
+                               <form onSubmit={handleAddSubtask} className="mt-auto pt-4 border-t border-slate-100 flex gap-2">
+                                  <input type="text" value={newSubtaskTitle} onChange={e => setNewSubtaskTitle(e.target.value)} placeholder="Escribe una nueva subtarea..." className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-400" required />
+                                  <button type="submit" className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2"><Plus size={16}/> Agregar</button>
+                               </form>
+                            )}
+                         </div>
+                      )}
+
+                      {detailsTab === 'comments' && (
+                        <div className="flex flex-col h-[50vh]">
+                          <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+                             {comments.length === 0 ? (
+                               <div className="flex flex-col items-center justify-center h-full text-slate-400"><Activity size={32} className="mb-2 opacity-50" /><span className="text-sm font-medium">No hay avances registrados aún</span></div>
+                             ) : (
+                               comments.map(c => {
+                                 const isQuote = c.content.startsWith('> Citando a'); let quotePart = ''; let replyPart = c.content;
+                                 if (isQuote) { const parts = c.content.split('\n\n'); quotePart = parts[0].replace(/> /g, ''); replyPart = parts.slice(1).join('\n\n'); }
+                                 
+                                 return (
+                                   <div key={c.id} className={`flex gap-3 group ${c.user_id === currentUser?.id ? 'flex-row-reverse' : ''}`}>
+                                      <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 border border-blue-200 flex items-center justify-center text-xs font-bold shrink-0 uppercase shadow-sm">{String(c.user?.nombre || 'U').charAt(0)}{String(c.user?.apellido || '').charAt(0)}</div>
+                                      <div className="flex flex-col gap-1 max-w-[80%]">
+                                        <div className={`p-3 rounded-2xl shadow-sm flex flex-col gap-1.5 ${c.user_id === currentUser?.id ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200'}`}>
+                                           <div className="flex items-center justify-between gap-4"><span className={`text-[10px] font-bold ${c.user_id === currentUser?.id ? 'text-blue-200' : 'text-slate-500'}`}>{c.user?.nombre} {c.user?.apellido}</span></div>
+                                           {isQuote && <div className={`pl-3 py-1 mb-1 border-l-2 text-xs italic rounded-r-md ${c.user_id === currentUser?.id ? 'border-blue-300 bg-blue-700/30 text-blue-100' : 'border-slate-400 bg-slate-200/50 text-slate-600'}`}>{quotePart}</div>}
+                                           
+                                           {c.subtask && (
+                                              <div className={`flex items-center gap-1.5 text-[10px] font-bold px-2 py-1 rounded w-max mb-1 ${c.user_id === currentUser?.id ? 'bg-blue-800/30 text-blue-100' : 'bg-slate-200 text-slate-600'}`}>
+                                                 <Tag size={10} /> Referente a: {c.subtask.titulo}
+                                              </div>
+                                           )}
+
+                                           <p className="text-sm leading-relaxed whitespace-pre-wrap">{replyPart}</p>
+                                           <span className={`text-[9px] font-medium text-right ${c.user_id === currentUser?.id ? 'text-blue-200' : 'text-slate-400'}`}>{new Date(c.created_at).toLocaleString('es-CO', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                                        </div>
+                                        <div className={`flex items-center ${c.user_id === currentUser?.id ? 'justify-end' : 'justify-start'}`}><button onClick={() => setReplyingTo(c)} className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all px-2"><Reply size={12} /> Citar avance</button></div>
+                                      </div>
+                                   </div>
+                                 );
+                               })
+                             )}
+                          </div>
+                          
+                          <div className="mt-auto pt-4 border-t border-slate-100 flex flex-col gap-2">
+                             {replyingTo && (
+                               <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-xl flex justify-between items-start gap-4">
+                                 <div className="text-xs text-indigo-800"><span className="font-bold flex items-center gap-1"><Reply size={12}/> Respondiendo a {replyingTo.user?.nombre}:</span><p className="italic line-clamp-2 opacity-80 mt-1 border-l-2 border-indigo-300 pl-2">{replyingTo.content.replace(/> Citando a.*\n> ".*"\n\n/g, '')}</p></div>
+                                 <button type="button" onClick={() => setReplyingTo(null)} className="text-indigo-400 hover:text-indigo-700 p-1 bg-indigo-100 rounded-full"><X size={14}/></button>
+                               </div>
+                             )}
+
+                             {selectedTask.subtasks && selectedTask.subtasks.length > 0 && (
+                                <select 
+                                  className="w-full text-xs px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 outline-none focus:border-blue-400"
+                                  value={selectedSubtaskIdForComment}
+                                  onChange={(e) => setSelectedSubtaskIdForComment(e.target.value)}
+                                >
+                                  <option value="">-- Comentario general de la tarea --</option>
+                                  {selectedTask.subtasks.map((st: any) => (
+                                    <option key={st.id} value={st.id}>Referente a: {st.titulo}</option>
+                                  ))}
+                                </select>
+                             )}
+
+                             <form onSubmit={handleCommentSubmit} className="flex gap-2">
+                                <input type="text" value={newComment} onChange={(e) => setNewComment(e.target.value)} placeholder="Registrar un nuevo avance..." className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/20 transition-all text-sm" required />
+                                <button type="submit" disabled={isSubmittingComment} className="px-6 py-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 disabled:opacity-50 transition-all shadow-md active:scale-95">Registrar</button>
+                             </form>
+                          </div>
+                        </div>
+                      )}
+
+                      {detailsTab === 'attachments' && (
+                         <div className="flex flex-col h-[50vh]">
+                            <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
+                               {attachments.length === 0 ? <div className="flex flex-col items-center justify-center h-full text-slate-400"><Paperclip size={32} className="mb-2 opacity-50" /><span className="text-sm font-medium">No hay evidencias adjuntas</span></div> : (
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                     {attachments.map(att => (
+                                        <div key={att.id} className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors group">
+                                           <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg shrink-0"><FileText size={20} /></div>
+                                           <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-700 truncate" title={att.filename}>{att.filename || 'Archivo adjunto'}</p><p className="text-[10px] text-slate-400 font-medium">{new Date(att.uploaded_at).toLocaleString()}</p></div>
+                                           <a href={att.filepath} target="_blank" rel="noopener noreferrer" className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-emerald-600 hover:border-emerald-200 rounded-lg shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100"><Download size={16}/></a>
+                                        </div>
+                                     ))}
+                                  </div>
+                               )}
+                            </div>
+                            <form className="mt-auto pt-4 border-t border-slate-100">
+                               <label className="flex items-center justify-center gap-2 w-full p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-emerald-50 hover:border-emerald-400 hover:text-emerald-600 transition-all text-slate-500">
+                                  {isUploading ? <span className="text-sm font-bold animate-pulse">Subiendo archivo...</span> : <><Upload size={18} /><span className="text-sm font-bold">Subir nueva evidencia</span><input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} /></>}
+                               </label>
+                            </form>
+                         </div>
+                      )}
+                   </div>
+              </motion.div>
+           </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
