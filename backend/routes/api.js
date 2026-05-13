@@ -82,6 +82,10 @@ router.get('/control/tasks', taskController.getControlTasks);
 // Comentarios
 router.get('/comments/:taskId', commentController.getByTask);
 router.post('/comments', commentController.create);
+// 👇 AÑADE ESTAS DOS RUTAS NUEVAS
+router.put('/comments/:id', commentController.update);
+router.delete('/comments/:id', commentController.delete);
+
 
 // Notificaciones
 router.get('/notifications', notificationController.getByUser);

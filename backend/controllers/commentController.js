@@ -106,7 +106,65 @@ const commentController = {
       console.error("❌ Error general al crear el avance:", error);
       res.status(500).json({ error: "Error interno del servidor al crear el avance" });
     }
+  },
+update: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { content } = req.body;
+
+      const comment = await prisma.comment.findUnique({ 
+        where: { id: parseInt(id) },
+        include: { task: true } 
+      });
+
+      if (!comment) return res.status(404).json({ error: "Comentario no encontrado" });
+
+      // BLOQUEO DE AUDITORÍA: No se edita si está completado/cancelado
+      if (comment.task.estado === 'Completado' || comment.task.estado === 'Cancelado') {
+        return res.status(403).json({ error: "🚫 La tarea ya está finalizada, el historial no se puede modificar." });
+      }
+
+      const updatedComment = await prisma.comment.update({
+        where: { id: parseInt(id) },
+        data: { content }
+      });
+
+      res.json(updatedComment);
+    } catch (error) {
+      console.error("Error actualizando comentario:", error);
+      res.status(500).json({ error: "Error al actualizar el comentario" });
+    }
+  },
+
+  delete: async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const comment = await prisma.comment.findUnique({ 
+        where: { id: parseInt(id) },
+        include: { task: true } 
+      });
+
+      if (!comment) return res.status(404).json({ error: "Comentario no encontrado" });
+
+      // BLOQUEO DE AUDITORÍA: No se elimina si está completado/cancelado
+      if (comment.task.estado === 'Completado' || comment.task.estado === 'Cancelado') {
+        return res.status(403).json({ error: "🚫 La tarea ya está finalizada, el historial no se puede modificar." });
+      }
+
+      await prisma.comment.delete({
+        where: { id: parseInt(id) }
+      });
+
+      res.json({ message: "Comentario eliminado exitosamente" });
+    } catch (error) {
+      console.error("Error eliminando comentario:", error);
+      res.status(500).json({ error: "Error al eliminar el comentario" });
+    }
   }
+
+
+
 };
 
 module.exports = commentController;

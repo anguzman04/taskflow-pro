@@ -133,7 +133,7 @@ const ChartsSection = ({ data }: { data: any[] }) => {
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-6">
           <PieChartIcon size={16} className="text-slate-400"/>
-          <span className="text-sm font-bold text-slate-900">Distribución por Estado</span>
+          <span className="text-sm font-bold text-slate-900">Distribuci  n por Estado</span>
         </div>
         <div className="h-64 flex items-center justify-center">
           {pieData.length > 0 ? (
@@ -151,7 +151,7 @@ const ChartsSection = ({ data }: { data: any[] }) => {
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-6">
           <BarChart3 size={16} className="text-slate-400"/>
-          <span className="text-sm font-bold text-slate-900">Avance Promedio según Prioridad</span>
+          <span className="text-sm font-bold text-slate-900">Avance Promedio seg  n Prioridad</span>
         </div>
         <div className="h-64">
           {priorityStats.length > 0 ? (
@@ -257,15 +257,20 @@ export default function App() {
   const [newComment, setNewComment] = useState('');
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
-  
   const [selectedSubtaskIdForComment, setSelectedSubtaskIdForComment] = useState<string>('');
+
+
+
+  // ?? A?ADE ESTOS DOS:
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null);
+  const [editCommentContent, setEditCommentContent] = useState('');
 
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [detailsTab, setDetailsTab] = useState<DetailsTab>('comments');
   
-  // 👇 AÑADE ESTA LÍNEA
+  // ?? A?ADE ESTA L  NEA
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
@@ -292,7 +297,7 @@ export default function App() {
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     const logoutUser = () => {
-      alert("Tu sesión ha expirado por inactividad. Por seguridad, debes iniciar sesión nuevamente.");
+      alert("Tu sesi  n ha expirado por inactividad. Por seguridad, debes iniciar sesi  n nuevamente.");
       handleLogout();
     };
     const resetTimer = () => { clearTimeout(timeoutId); timeoutId = setTimeout(logoutUser, 900000); };
@@ -478,7 +483,7 @@ export default function App() {
           fetchedTasks = Array.isArray(data) ? data : (data?.data || data?.tasks || []);
       }
     } catch (err) {
-       console.warn("La ruta de control en el backend falló, activando motor de respaldo local...");
+       console.warn("La ruta de control en el backend fall  , activando motor de respaldo local...");
     }
 
     let areasAutorizadas: number[] = [];
@@ -610,7 +615,7 @@ export default function App() {
       if (taskToOpen) {
         setSelectedTask(taskToOpen); setDetailsTab('comments'); setIsDetailsModalOpen(true);
         fetchTaskDetails(taskToOpen.id!); setShowNotifications(false); 
-      } else alert(`La tarea #${targetTaskId} no se encontró en tu vista actual.`);
+      } else alert(`La tarea #${targetTaskId} no se encontr   en tu vista actual.`);
     }
   };
 
@@ -646,7 +651,7 @@ export default function App() {
   };
 
   const handleDeleteSubtask = async (subtaskId: number) => {
-    if (!confirm("¿Eliminar esta subtarea?")) return;
+    if (!confirm("?Eliminar esta subtarea?")) return;
     try {
       const res = await fetch(`/api/tasks/subtasks/${subtaskId}`, { method: 'DELETE' });
       if (res.ok) fetchTasks();
@@ -674,6 +679,41 @@ export default function App() {
       if (res.ok) { setNewComment(''); setReplyingTo(null); setSelectedSubtaskIdForComment(''); fetchTaskDetails(selectedTask.id!); }
     } catch (err) {} finally { setIsSubmittingComment(false); }
   };
+
+
+const handleUpdateComment = async (commentId: number) => {
+    if (!editCommentContent.trim() || !selectedTask) return;
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editCommentContent })
+      });
+      if (res.ok) {
+        setEditingCommentId(null);
+        setEditCommentContent('');
+        fetchTaskDetails(selectedTask.id!); // Recarga los comentarios
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Error al editar");
+      }
+    } catch (error) { alert("Error de conexi  n"); }
+  };
+
+  const handleDeleteComment = async (commentId: number) => {
+    if (!confirm("?Est  s seguro de eliminar este avance?")) return;
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: 'DELETE' });
+      if (res.ok) {
+        fetchTaskDetails(selectedTask.id!); // Recarga los comentarios
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Error al eliminar");
+      }
+    } catch (error) { alert("Error de conexi  n"); }
+  };
+
+
+
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!selectedTask || !e.target.files?.[0]) return;
@@ -707,17 +747,17 @@ export default function App() {
 
     if (!currentUser?.is_admin) {
         if (task.estado === 'Completado' || task.estado === 'Cancelado') {
-            alert("🚫 AUDITORÍA: Esta tarea ya está finalizada y no puede moverse."); return;
+            alert("?? AUDITOR  A: Esta tarea ya est   finalizada y no puede moverse."); return;
         }
         if (task.estado !== 'Planeado' && newStatus === 'Planeado') {
-            alert("🚫 AUDITORÍA: No puedes regresar una tarea en curso al estado 'Planeado'."); return;
+            alert("?? AUDITOR  A: No puedes regresar una tarea en curso al estado 'Planeado'."); return;
         }
     }
 
     try {
         const res = await fetch(`/api/tasks/${taskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...task, estado: newStatus }) });
         if (res.ok) fetchTasks(); else { const errorData = await res.json(); alert(errorData.error || "Error al mover la tarea."); }
-    } catch (err) { alert("Error de conexión al mover la tarea."); }
+    } catch (err) { alert("Error de conexi  n al mover la tarea."); }
   };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
@@ -725,15 +765,15 @@ export default function App() {
  /*  const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!currentUser) return;
-    if (selectedResponsibles.length === 0) { alert("⚠️ Debes seleccionar al menos un responsable para la tarea."); return; }
+    if (selectedResponsibles.length === 0) { alert("?? Debes seleccionar al menos un responsable para la tarea."); return; }
     const formData = new FormData(e.currentTarget);
     const fInicio = formData.get('fecha_inicio') as string;
     const fFin = formData.get('fecha_fin') as string;
-    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("⚠️ Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
+    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("?? Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
 
     try {
       const taskData = {
-        // FIX 1: Forzamos el texto a MAYÚSCULAS
+        // FIX 1: Forzamos el texto a MAY  SCULAS
         actividad: String(formData.get('actividad')).toUpperCase(), 
         responsable: selectedResponsibles.join(', '), 
         fecha_registro: formData.get('fecha_registro'), fecha_inicio: fInicio, fecha_fin: fFin, 
@@ -743,7 +783,7 @@ export default function App() {
         proyecto_id: formData.get('proyecto_id') ? parseInt(formData.get('proyecto_id') as string) : null,
         area_origen_id: formData.get('area_origen_id') ? parseInt(formData.get('area_origen_id') as string) : null,
         gerente_responsable: formData.get('gerente_responsable'), tipo: formData.get('tipo'), tematica: formData.get('tematica'),
-        compromiso_semanal: formData.get('compromiso_semanal'), requiere_inversion: formData.get('requiere_inversion') === 'Sí',
+        compromiso_semanal: formData.get('compromiso_semanal'), requiere_inversion: formData.get('requiere_inversion') === 'S  ',
         alineacion_estrategica: formData.get('alineacion_estrategica'), impacto: formData.get('impacto'), viabilidad_tecnica: formData.get('viabilidad_tecnica'),
         orden_ejecucion: formData.get('orden_ejecucion') ? parseInt(formData.get('orden_ejecucion') as string) : null
       };
@@ -757,22 +797,22 @@ export default function App() {
           setPreselectedProjectId(null); 
           setSelectedResponsibles([]); 
       } 
-      else { const errorData = await res.json(); alert(errorData.error || "Ocurrió un error al guardar la tarea."); }
+      else { const errorData = await res.json(); alert(errorData.error || "Ocurri   un error al guardar la tarea."); }
     } catch (err) {}
   }; */
   
   
   const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!currentUser || isSubmitting) return; // <-- Evita la doble ejecución
-    if (selectedResponsibles.length === 0) { alert("⚠️ Debes seleccionar al menos un responsable para la tarea."); return; }
+    if (!currentUser || isSubmitting) return; // <-- Evita la doble ejecuci  n
+    if (selectedResponsibles.length === 0) { alert("?? Debes seleccionar al menos un responsable para la tarea."); return; }
     
     const formData = new FormData(e.currentTarget);
     const fInicio = formData.get('fecha_inicio') as string;
     const fFin = formData.get('fecha_fin') as string;
-    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("⚠️ Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
+    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("?? Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
 
-    setIsSubmitting(true); // <-- Bloqueamos el botón inmediatamente
+    setIsSubmitting(true); // <-- Bloqueamos el bot  n inmediatamente
 
     try {
       const taskData = {
@@ -785,7 +825,7 @@ export default function App() {
         proyecto_id: formData.get('proyecto_id') ? parseInt(formData.get('proyecto_id') as string) : null,
         area_origen_id: formData.get('area_origen_id') ? parseInt(formData.get('area_origen_id') as string) : null,
         gerente_responsable: formData.get('gerente_responsable'), tipo: formData.get('tipo'), tematica: formData.get('tematica'),
-        compromiso_semanal: formData.get('compromiso_semanal'), requiere_inversion: formData.get('requiere_inversion') === 'Sí',
+        compromiso_semanal: formData.get('compromiso_semanal'), requiere_inversion: formData.get('requiere_inversion') === 'S  ',
         alineacion_estrategica: formData.get('alineacion_estrategica'), impacto: formData.get('impacto'), viabilidad_tecnica: formData.get('viabilidad_tecnica'),
         orden_ejecucion: formData.get('orden_ejecucion') ? parseInt(formData.get('orden_ejecucion') as string) : null
       };
@@ -799,11 +839,11 @@ export default function App() {
           setPreselectedProjectId(null); 
           setSelectedResponsibles([]); 
       } 
-      else { const errorData = await res.json(); alert(errorData.error || "Ocurrió un error al guardar la tarea."); }
+      else { const errorData = await res.json(); alert(errorData.error || "Ocurri   un error al guardar la tarea."); }
     } catch (err) {
-      alert("Error de conexión al servidor al guardar la tarea.");
+      alert("Error de conexi  n al servidor al guardar la tarea.");
     } finally {
-      setIsSubmitting(false); // <-- Liberamos el botón sin importar el resultado
+      setIsSubmitting(false); // <-- Liberamos el bot  n sin importar el resultado
     }
   };
   
@@ -813,7 +853,7 @@ export default function App() {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const fInicio = formData.get('fecha_inicio') as string; const fFin = formData.get('fecha_fin') as string;
-    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("⚠️ Error: La Fecha de Fin Estimada del proyecto no puede ser anterior a la Fecha de Inicio."); return; }
+    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("?? Error: La Fecha de Fin Estimada del proyecto no puede ser anterior a la Fecha de Inicio."); return; }
 
     try {
       const projectData = {
@@ -846,7 +886,7 @@ export default function App() {
     const formEmail = formData.get('email') as string;
 
     const duplicate = allUsers.find(u => u.email.toLowerCase() === formEmail.toLowerCase() && (editingItem ? u.id !== editingItem.id : true) );
-    if (duplicate) { if (!confirm(`⚠️ El correo ${formEmail} ya está asignado al usuario ${duplicate.nombre} ${duplicate.apellido}.\n\n¿Estás seguro de continuar y usar el mismo correo para este registro?`)) return; }
+    if (duplicate) { if (!confirm(`?? El correo ${formEmail} ya est   asignado al usuario ${duplicate.nombre} ${duplicate.apellido}.\n\n?Est  s seguro de continuar y usar el mismo correo para este registro?`)) return; }
 
     try {
       const userData = {
@@ -863,7 +903,7 @@ export default function App() {
         perm_projects_view: formData.get('perm_projects_view') === 'on' ? 1 : 0, perm_projects_create: formData.get('perm_projects_create') === 'on' ? 1 : 0,
         perm_projects_edit: formData.get('perm_projects_edit') === 'on' ? 1 : 0, perm_projects_delete: formData.get('perm_projects_delete') === 'on' ? 1 : 0,
         perm_reports_view: formData.get('perm_reports_view') === 'on' ? 1 : 0,
-        // FIX 2: Agregamos el nuevo permiso para edición en Control de Gestión
+        // FIX 2: Agregamos el nuevo permiso para edici  n en Control de Gesti  n
         perm_control_edit: formData.get('perm_control_edit') === 'on' ? 1 : 0,
         perm_subtasks_view: formData.get('perm_subtasks_view') === 'on' ? 1 : 0, perm_subtasks_create: formData.get('perm_subtasks_create') === 'on' ? 1 : 0,
         perm_subtasks_edit: formData.get('perm_subtasks_edit') === 'on' ? 1 : 0, perm_subtasks_delete: formData.get('perm_subtasks_delete') === 'on' ? 1 : 0,
@@ -875,13 +915,13 @@ export default function App() {
   };
 
   const handleDelete = async (id: number, type: View) => {
-    if (!confirm(`¿Estás seguro de eliminar este registro?`)) return;
+    if (!confirm(`?Est  s seguro de eliminar este registro?`)) return;
     try {
       const res = await fetch(`/api/${type}/${id}`, { method: 'DELETE' });
       if (res.ok) { 
         if (type === 'tasks') fetchTasks(); if (type === 'users') fetchUsers(); 
         if (type === 'areas') fetchAreas(); if (type === 'projects') fetchProjects();
-      } else { const data = await res.json(); alert(data.error || "Ocurrió un error."); }
+      } else { const data = await res.json(); alert(data.error || "Ocurri   un error."); }
     } catch (err) {}
   };
 
@@ -892,13 +932,13 @@ export default function App() {
 
     worksheet.columns = [
       { header: 'ID', key: 'id', width: 8 }, { header: 'Actividad', key: 'actividad', width: 45 },
-      { header: 'Ejecutores (Responsables)', key: 'responsable', width: 35 }, { header: 'Área / Origen', key: 'area_origen', width: 25 },
+      { header: 'Ejecutores (Responsables)', key: 'responsable', width: 35 }, { header: '  rea / Origen', key: 'area_origen', width: 25 },
       { header: 'Proyecto / Iniciativa', key: 'proyecto', width: 25 }, { header: 'Gerente/Jefe Responsable', key: 'gerente', width: 25 },
       { header: 'Tipo', key: 'tipo', width: 20 }, { header: 'Estado', key: 'estado', width: 15 },
       { header: 'Fecha de Compromiso', key: 'fechaFin', width: 18 }, { header: 'Tematica', key: 'tematica', width: 25 },
       { header: 'Prioridad', key: 'prioridad', width: 15 }, { header: '% actual', key: 'avance', width: 12 },
       { header: 'Compromiso semanal', key: 'compromiso_semanal', width: 45 }, { header: 'Dependencia', key: 'dependencia', width: 25 },
-      { header: 'Requiere Inversión', key: 'inversion', width: 18 }, { header: 'Alineación estrategica', key: 'alineacion', width: 35 },
+      { header: 'Requiere Inversi  n', key: 'inversion', width: 18 }, { header: 'Alineaci  n estrategica', key: 'alineacion', width: 35 },
       { header: 'Impacto financiero / Operativo', key: 'impacto', width: 25 }, { header: 'Viabilidad Tecnica', key: 'viabilidad', width: 25 },
       { header: 'Calificacion', key: 'calificacion', width: 15 }, { header: 'Orden Sugerido/Manual', key: 'orden_ejecucion', width: 25 }, 
       { header: 'Observaciones', key: 'observaciones', width: 60 }
@@ -906,13 +946,13 @@ export default function App() {
 
     tasksToExport.forEach((task, idx) => {
       const projectName = projects.find(p => p.id === task.proyecto_id)?.nombre || 'Sin Proyecto';
-      const areaName = areas.find(a => a.id === task.area_origen_id)?.nombre || 'Sin Área';
+      const areaName = areas.find(a => a.id === task.area_origen_id)?.nombre || 'Sin   rea';
       worksheet.addRow({
         id: task.id, actividad: task.actividad, responsable: task.responsable, area_origen: areaName,
         proyecto: projectName, gerente: task.gerente_responsable || 'Sin Asignar', tipo: task.tipo || '-',
         estado: task.estado, fechaFin: task.fecha_fin, tematica: task.tematica || '-', prioridad: getPriorityLabel(task.prioridad),
         avance: `${task.porcentaje_avance}%`, compromiso_semanal: task.compromiso_semanal || '-', dependencia: task.prerequisito || '-',
-        inversion: task.requiere_inversion ? 'Sí' : 'No', alineacion: task.alineacion_estrategica || '-', impacto: task.impacto || '-',
+        inversion: task.requiere_inversion ? 'S  ' : 'No', alineacion: task.alineacion_estrategica || '-', impacto: task.impacto || '-',
         viabilidad: task.viabilidad_tecnica || '-', calificacion: task.calificacion || '-', orden_ejecucion: task.orden_ejecucion || `Sugerido #${idx + 1}`,
         observaciones: task.observacion || '-'
       });
@@ -941,24 +981,24 @@ export default function App() {
       { header: 'Ignorar', key: 'ignore1', width: 10 }, 
       { header: 'Actividad (*Obligatorio)', key: 'actividad', width: 40 },
       { header: 'Responsable', key: 'responsable', width: 30 }, 
-      { header: 'Área Origen', key: 'area', width: 20 },
+      { header: '  rea Origen', key: 'area', width: 20 },
       { header: 'Proyecto', key: 'proyecto', width: 20 }, 
       { header: 'Gerente Responsable', key: 'gerente', width: 20 },
       { header: 'Tipo', key: 'tipo', width: 15 }, 
       { header: 'Estado', key: 'estado', width: 15 },
       { header: 'Fecha Inicio (YYYY-MM-DD)', key: 'fecha_inicio', width: 20 }, 
       { header: 'Fecha Fin Estimada (YYYY-MM-DD)', key: 'fecha_fin', width: 20 }, 
-      { header: 'Temática', key: 'tematica', width: 20 },
+      { header: 'Tem  tica', key: 'tematica', width: 20 },
       { header: 'Prioridad', key: 'prioridad', width: 15 }, 
       { header: '% Avance', key: 'avance', width: 15 },
       { header: 'Compromiso Semanal', key: 'compromiso', width: 30 }, 
       { header: 'Dependencia (Prerequisito)', key: 'prerequisito', width: 20 },
-      { header: 'Requiere Inversión (Sí/No)', key: 'inversion', width: 20 }, 
-      { header: 'Alineación Estratégica', key: 'alineacion', width: 30 },
+      { header: 'Requiere Inversi  n (S  /No)', key: 'inversion', width: 20 }, 
+      { header: 'Alineaci  n Estrat  gica', key: 'alineacion', width: 30 },
       { header: 'Impacto', key: 'impacto', width: 20 }, 
-      { header: 'Viabilidad Técnica', key: 'viabilidad', width: 20 },
+      { header: 'Viabilidad T  cnica', key: 'viabilidad', width: 20 },
       { header: 'Ignorar', key: 'ignore20', width: 10 }, 
-      { header: 'Observación', key: 'observacion', width: 40 }
+      { header: 'Observaci  n', key: 'observacion', width: 40 }
     ];
 
     const headerRow = worksheet.getRow(1);
@@ -966,14 +1006,14 @@ export default function App() {
 
     worksheet.addRow({
       ignore1: '', actividad: 'EJEMPLO DE TAREA NUEVA', responsable: 'Nombre Apellido',
-      area: 'Sistemas', proyecto: 'Migración Nube', gerente: 'Jefe Sistemas',
+      area: 'Sistemas', proyecto: 'Migraci  n Nube', gerente: 'Jefe Sistemas',
       tipo: 'Soporte', estado: 'Planeado', 
       fecha_inicio: '2026-04-01', 
       fecha_fin: '2026-12-31', 
       tematica: 'Infraestructura',
       prioridad: 'Alta', avance: '0', compromiso: 'Avanzar 20%', prerequisito: 'Ninguno',
-      inversion: 'No', alineacion: 'WIG 2 Reducción y control del costo', impacto: '2. Medio',
-      viabilidad: '3. Baja Complejidad', ignore20: '', observacion: 'Prueba de importación'
+      inversion: 'No', alineacion: 'WIG 2 Reducci  n y control del costo', impacto: '2. Medio',
+      viabilidad: '3. Baja Complejidad', ignore20: '', observacion: 'Prueba de importaci  n'
     });
 
     const buffer = await workbook.xlsx.writeBuffer();
@@ -1027,7 +1067,7 @@ export default function App() {
         if (rowNumber === 1) return; 
         const val = (colIndex: number) => row.getCell(colIndex)?.text || '';
         
-        // FIX 1B: Forzamos la actividad importada a MAYÚSCULAS
+        // FIX 1B: Forzamos la actividad importada a MAY  SCULAS
         const actividad = val(2).toUpperCase(); 
         if (!actividad) return; 
 
@@ -1049,7 +1089,7 @@ export default function App() {
           porcentaje_avance: parseInt(val(13).replace('%', '')) || 0, 
           compromiso_semanal: val(14), 
           prerequisito: val(15), 
-          requiere_inversion: val(16).toLowerCase() === 'sí' || val(16).toLowerCase() === 'si', 
+          requiere_inversion: val(16).toLowerCase() === 's  ' || val(16).toLowerCase() === 'si', 
           alineacion_estrategica: val(17), 
           impacto: val(18), 
           viabilidad_tecnica: val(19), 
@@ -1058,12 +1098,12 @@ export default function App() {
         });
       });
 
-      if (rows.length === 0) { alert("No se encontraron tareas válidas."); setIsImporting(false); return; }
+      if (rows.length === 0) { alert("No se encontraron tareas v  lidas."); setIsImporting(false); return; }
 
       const res = await fetch('/api/tasks/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: rows }) });
       
       if (res.ok) { 
-          alert(`¡Éxito! Se importaron ${rows.length} tareas correctamente.`); 
+          alert(`?  xito! Se importaron ${rows.length} tareas correctamente.`); 
           await fetchTasks(); 
           await fetchControlTasks(); 
       } 
@@ -1123,9 +1163,9 @@ export default function App() {
       <div className="space-y-6">
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-end gap-4">
            <div className="flex-1 min-w-[200px]">
-             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Área</label>
+             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por   rea</label>
              <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500 font-medium" value={reportAreaFilter} onChange={(e) => setReportAreaFilter(e.target.value)}>
-                <option value="All">Todas las Áreas</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+                <option value="All">Todas las   reas</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
              </select>
            </div>
            <div className="flex-1 min-w-[200px]">
@@ -1169,7 +1209,7 @@ export default function App() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-             <div className="flex items-center gap-2 mb-6"><BarChart3 size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Volumen de Tareas por Área</span></div>
+             <div className="flex items-center gap-2 mb-6"><BarChart3 size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Volumen de Tareas por   rea</span></div>
              <div className="h-80">
                {tasksByArea.length > 0 ? (
                  <ResponsiveContainer width="100%" height="100%">
@@ -1221,88 +1261,141 @@ export default function App() {
   const overdueProjectsCount = projects.filter(p => p.estado === 'Activo' && getDaysOverdue(p.fecha_fin || '', p.estado) > 0).length;
   const globalProjectProgressRaw = projects.length > 0 ? projects.reduce((acc, p) => { const pTasks = tasks.filter(t => t.proyecto_id === p.id); const pProgress = pTasks.length > 0 ? pTasks.reduce((sum, t) => sum + (Number(t.porcentaje_avance) || 0), 0) / pTasks.length : 0; return acc + pProgress; }, 0) / projects.length : 0;
 
-  const renderDynamicCell = (colId: string, task: any, index: number, isControlView = false) => {
-      const overdueDays = getDaysOverdue(task.fecha_fin, task.estado);
-      const taskProject = projects.find(p => p.id === task.proyecto_id);
-      const responsablesArray = task.responsable ? String(task.responsable).split(',').map(r => r.trim()) : [];
-      const isTaskSubExpanded = expandedTaskSubtasks.has(task.id!);
-      const totalSubtasks = task.subtasks?.length || 0;
-      const completedSubtasks = task.subtasks?.filter((st: any) => st.completada).length || 0;
-      const canView = canViewSubtasks(String(task.responsable));
-      const isTaskLocked = task.estado === 'Completado' || task.estado === 'Cancelado';
-      const isTaskActive = task.estado !== 'Planeado' || task.porcentaje_avance > 0;
-      const canEditTask = !!(currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked));
-      const canDeleteTask = !!(currentUser?.is_admin || (currentUser?.can_delete_tasks && !isTaskActive));
+const renderDynamicCell = (colId: string, task: any, index: number, isControlView = false) => {
+    const overdueDays = getDaysOverdue(task.fecha_fin, task.estado);
+    const taskProject = projects.find(p => p.id === task.proyecto_id);
+    const responsablesArray = task.responsable ? String(task.responsable).split(',').map(r => r.trim()) : [];
+    const isTaskSubExpanded = expandedTaskSubtasks.has(task.id!);
+    const totalSubtasks = task.subtasks?.length || 0;
+    const completedSubtasks = task.subtasks?.filter((st: any) => st.completada).length || 0;
+    const canView = canViewSubtasks(String(task.responsable));
+    const isTaskLocked = task.estado === 'Completado' || task.estado === 'Cancelado';
+    const isTaskActive = task.estado !== 'Planeado' || task.porcentaje_avance > 0;
+    
+    const canEditTask = !!(currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked));
+    const canDeleteTask = !!(currentUser?.is_admin || (currentUser?.can_delete_tasks && !isTaskActive));
 
-      switch(colId) {
-        case 'orden': return (
+    switch(colId) {
+      case 'orden':
+        return (
           <td key={`orden-${task.id}`} className="px-6 py-4">
-             <div className="flex justify-center items-center">
-                {index === 0 && <span className="text-2xl drop-shadow-md animate-pulse" title="Prioridad #1 Absoluta">🏆</span>}
-                {index === 1 && <span className="text-xl drop-shadow-md" title="Prioridad #2">🥈</span>}
-                {index === 2 && <span className="text-xl drop-shadow-md" title="Prioridad #3">🥉</span>}
-                {index > 2 && <span className="text-xs font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-md border border-slate-200 shadow-inner">#{index + 1}</span>}
-             </div>
+            <div className="flex justify-center items-center">
+              {index === 0 && <span className="text-2xl drop-shadow-md animate-pulse" title="Prioridad #1 Absoluta">🏆</span>}
+              {index === 1 && <span className="text-xl drop-shadow-md" title="Prioridad #2">🥈</span>}
+              {index === 2 && <span className="text-xl drop-shadow-md" title="Prioridad #3">🥉</span>}
+              {index > 2 && <span className="text-xs font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-md border border-slate-200 shadow-inner">#{index + 1}</span>}
+            </div>
           </td>
         );
-        case 'actividad': return (
+      case 'actividad':
+        return (
           <td key={`actividad-${task.id}`} className="px-6 py-4">
             <div className="text-sm font-bold text-slate-900">{task.actividad}</div>
             <span className={`text-[9px] font-black px-2 py-0.5 mt-1 rounded-full uppercase inline-block bg-slate-100 text-slate-500 border-slate-200 ${getPriorityColor(task.prioridad)}`}>{getPriorityLabel(task.prioridad)}</span>
-            {task.calificacion && <span className="ml-2 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-block bg-indigo-100 text-indigo-700 border-indigo-200">⭐ {task.calificacion} pts</span>}
+            {task.calificacion && <span className="ml-2 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-block bg-indigo-100 text-indigo-700 border-indigo-200">⚡ {task.calificacion} pts</span>}
             {totalSubtasks > 0 && canView && (
-              <div className="mt-2"><button onClick={() => toggleTaskSubtasksExpand(task.id!)} className="flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-indigo-600 transition-colors w-max"><ChevronDown size={14} className={`transition-transform ${isTaskSubExpanded ? 'rotate-180' : ''}`} /> ↳ Subtareas ({completedSubtasks}/{totalSubtasks})</button></div>
+              <div className="mt-2">
+                <button onClick={() => toggleTaskSubtasksExpand(task.id!)} className="flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-indigo-600 transition-colors w-max">
+                  <ChevronDown size={14} className={`transition-transform ${isTaskSubExpanded ? 'rotate-180' : ''}`} /> 📋 Subtareas ({completedSubtasks}/{totalSubtasks})
+                </button>
+              </div>
             )}
           </td>
         );
-        case 'proyecto': return (
-          <td key={`proyecto-${task.id}`} className="px-6 py-4">{taskProject ? <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 flex items-center gap-1 w-max"><FolderKanban size={10} /> {taskProject.nombre}</span> : <span className="text-xs text-slate-300 italic">-</span>}</td>
-        );
-        case 'compromiso': return (
-          <td key={`compromiso-${task.id}`} className="px-6 py-4"><div className="text-[10px] text-slate-400">{task.fecha_fin}</div>{overdueDays > 0 && <span className="mt-1 inline-block text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded uppercase">⚠️ {overdueDays} días</span>}</td>
-        );
-        case 'avance': return (
-          <td key={`avance-${task.id}`} className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-12 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(task.porcentaje_avance)}`} style={{ width: `${task.porcentaje_avance}%` }} /></div><span className={`text-[10px] font-bold ${getProgressTextColor(task.porcentaje_avance)}`}>{task.porcentaje_avance}%</span></div></td>
-        );
-        case 'estado': return (
-          <td key={`estado-${task.id}`} className="px-6 py-4"><span className={`text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider ${getStatusColor(task.estado)}`}>{task.estado}</span></td>
-        );
-        case 'responsable': return (
-          <td key={`responsable-${task.id}`} className="px-6 py-4">
-             {isControlView ? (
-                <div className="flex items-center gap-3">
-                   <div className="w-6 h-6 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center text-[10px] font-bold uppercase shrink-0">{String(task.responsable || 'U').charAt(0)}</div>
-                   <div>
-                     <span className="text-xs font-bold text-slate-700 block">{String(task.responsable || 'Usuario').split(',')[0]}</span>
-                     <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 mt-1 rounded-full uppercase inline-block">{(() => { const respUser = allUsers.find(u => `${u.nombre} ${u.apellido}` === String(task.responsable).split(',')[0].trim()); const area = areas.find(a => a.id === respUser?.area_id); return area ? area.nombre : 'Sin Área'; })()}</span>
-                   </div>
-                </div>
-             ) : (
-                <div className="flex -space-x-2 overflow-hidden" title={String(task.responsable)}>{responsablesArray.slice(0, 3).map((resp, idx) => (<div key={idx} className="inline-block h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-[10px] uppercase border-2 border-white relative z-10 shadow-sm">{String(resp).charAt(0)}</div>))}{responsablesArray.length > 3 && <div className="inline-block h-8 w-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] border-2 border-white relative z-0">+{responsablesArray.length - 3}</div>}</div>
-             )}
+      case 'proyecto':
+        return (
+          <td key={`proyecto-${task.id}`} className="px-6 py-4">
+            {taskProject ? <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 flex items-center gap-1 w-max"><FolderKanban size={10} /> {taskProject.nombre}</span> : <span className="text-xs text-slate-300 italic">-</span>}
           </td>
         );
-        case 'acciones': return (
+      case 'compromiso':
+        return (
+          <td key={`compromiso-${task.id}`} className="px-6 py-4">
+            <div className="text-[10px] text-slate-400">{task.fecha_fin}</div>
+            {overdueDays > 0 && <span className="mt-1 inline-block text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded uppercase">⏳ {overdueDays} DÍAS</span>}
+          </td>
+        );
+      case 'avance':
+        return (
+          <td key={`avance-${task.id}`} className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-12 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(task.porcentaje_avance)}`} style={{ width: `${task.porcentaje_avance}%` }} /></div><span className={`text-[10px] font-bold ${getProgressTextColor(task.porcentaje_avance)}`}>{task.porcentaje_avance}%</span></div></td>
+        );
+      case 'estado':
+        return (
+          <td key={`estado-${task.id}`} className="px-6 py-4"><span className={`text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider ${getStatusColor(task.estado)}`}>{task.estado}</span></td>
+        );
+
+
+
+
+
+
+
+case 'responsable':
+        return (
+          <td key={`responsable-${task.id}`} className="px-6 py-4">
+            {isControlView ? (
+              <div className="flex items-center gap-3">
+                <div className="w-6 h-6 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center text-[10px] font-bold uppercase shrink-0">{String(task.responsable || 'U').charAt(0)}</div>
+                <div>
+                  <span className="text-xs font-bold text-slate-700 block">{String(task.responsable || 'Usuario').split(',')[0]}</span>
+                  <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 mt-1 rounded-full uppercase inline-block">{(() => { const respUser = allUsers.find(u => `${u.nombre} ${u.apellido}` === String(task.responsable).split(',')[0].trim()); const area = areas.find(a => a.id === respUser?.area_id); return area ? area.nombre : 'Sin Área'; })()}</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex -space-x-2 pl-1" title={String(task.responsable)}>
+                {responsablesArray.slice(0, 3).map((resp, idx) => (
+                  <div 
+                    key={idx} 
+                    className="h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-[10px] uppercase border border-white"
+                  >
+                    {String(resp).charAt(0)}
+                  </div>
+                ))}
+                {responsablesArray.length > 3 && (
+                  <div className="h-8 w-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] border border-white">
+                    +{responsablesArray.length - 3}
+                  </div>
+                )}
+              </div>
+            )}
+          </td>
+        );
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+      case 'acciones':
+        return (
           <td key={`acciones-${task.id}`} className="px-6 py-4">
             <div className="flex justify-center gap-2">
               <button onClick={() => { setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Ver Detalles"><Eye size={16} /></button>
-              
-              {/* FIX 2: Lógica condicional de edición en Panel vs Control de Gestión */}
               {!isControlView ? (
-                 <>
-                   {canEditTask ? <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea"><Edit2 size={16} /></button> : (currentUser?.can_edit_tasks && isTaskLocked) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
-                   {canDeleteTask ? <button onClick={() => handleDelete(task.id!, 'tasks')} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar Tarea"><Trash2 size={16} /></button> : (currentUser?.can_delete_tasks && isTaskActive) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
-                 </>
+                <>
+                  {canEditTask ? <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea"><Edit2 size={16} /></button> : (currentUser?.can_edit_tasks && isTaskLocked) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
+                  {canDeleteTask ? <button onClick={() => handleDelete(task.id!, 'tasks')} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar Tarea"><Trash2 size={16} /></button> : (currentUser?.can_delete_tasks && isTaskActive) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
+                </>
               ) : (
-                 (currentUser?.is_admin || (currentUser as any)?.perm_control_edit) && (
-                    <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea desde Control"><Edit2 size={16} /></button>
-                 )
+                (currentUser?.is_admin || (currentUser as any)?.perm_control_edit) && (
+                  <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea desde Control"><Edit2 size={16} /></button>
+                )
               )}
             </div>
           </td>
         );
-        default: return null;
-      }
+      default: return null;
+    }
   };
 
   return (
@@ -1320,8 +1413,8 @@ export default function App() {
           {canViewProjects && <button onClick={() => setCurrentView('projects')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'projects' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FolderKanban size={18} /> Gestión de Proyectos</button>}
           {canViewReports && <button onClick={() => setCurrentView('reports')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'reports' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><PieChartIconLucide size={18} /> Reportes</button>}
           {canViewUsers && <button onClick={() => setCurrentView('users')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'users' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={18} /> Gestión de Usuarios</button>}
-          {canViewAreas && <button onClick={() => setCurrentView('areas')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} /> Gestión de Áreas</button>}
-          {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => setCurrentView('control')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} /> Control de Gestión</button>}
+          {canViewAreas && <button onClick={() => setCurrentView('areas')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} /> Gestión de áreas</button>}
+          {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => setCurrentView('control')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} /> Control de Gestión </button>}
         </nav>
 
         <div className="p-4 border-t border-slate-100 bg-slate-50/50">
@@ -1355,14 +1448,14 @@ export default function App() {
                   ) : currentView === 'reports' ? (
                     <>
                       <h2 className="text-2xl font-bold text-slate-900 capitalize">Reportes Gerenciales</h2>
-                      <p className="text-slate-500 text-sm">Visualización de datos y métricas globales</p>
+                      <p className="text-slate-500 text-sm">Visualizaci  n de datos y m  tricas globales</p>
                     </>
                   ) : (
                     <>
                       <h2 className="text-2xl font-bold text-slate-900 capitalize">
-                        {currentView === 'users' ? 'Gestión de Usuarios' : currentView === 'areas' ? 'Gestión de Áreas' : currentView === 'projects' ? 'Gestión de Proyectos' : 'Control de Gestión'}
+                        {currentView === 'users' ? 'Gesti  n de Usuarios' : currentView === 'areas' ? 'Gesti  n de   reas' : currentView === 'projects' ? 'Gesti  n de Proyectos' : 'Control de Gesti  n'}
                       </h2>
-                      <p className="text-slate-500 text-sm">Administración y supervisión del sistema</p>
+                      <p className="text-slate-500 text-sm">Administraci  n y supervisi  n del sistema</p>
                     </>
                   )}
                 </div>
@@ -1436,7 +1529,7 @@ export default function App() {
 
                   {canCreateInCurrentView() && currentView !== 'reports' && (
                     <button onClick={() => { setEditingItem(null); setPreselectedProjectId(null); setUserSearchTerm(''); setIsModalOpen(true); }} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 active:scale-95">
-                      <Plus size={18} /> {currentView === 'tasks' ? 'Nueva Tarea' : currentView === 'users' ? 'Nuevo Usuario' : currentView === 'projects' ? 'Nuevo Proyecto' : 'Nueva Área'}
+                      <Plus size={18} /> {currentView === 'tasks' ? 'Nueva Tarea' : currentView === 'users' ? 'Nuevo Usuario' : currentView === 'projects' ? 'Nuevo Proyecto' : 'Nueva   rea'}
                     </button>
                   )}
                 </div>
@@ -1560,7 +1653,7 @@ export default function App() {
                       <option value="Planeado">Planeado</option>
                       <option value="En curso">En curso</option>
                       <option value="En espera">En espera</option>
-                      <option value="Atrasadas">Atrasadas ⚠️</option>
+                      <option value="Atrasadas">Atrasadas ??</option>
                       <option value="Completado">Completado</option>
                     </select>
                   )}
@@ -1584,7 +1677,7 @@ export default function App() {
                            <span className="text-xs font-black bg-white/50 px-2 py-0.5 rounded-md">{colTasks.length}</span>
                          </div>
                          <div className="p-3 flex-1 overflow-y-auto space-y-3 min-h-[150px]">
-                            {colTasks.length === 0 ? <div className="h-full flex items-center justify-center text-xs font-medium text-slate-400 italic border-2 border-dashed border-slate-200 rounded-xl py-8">Arrastra aquí</div> : (
+                            {colTasks.length === 0 ? <div className="h-full flex items-center justify-center text-xs font-medium text-slate-400 italic border-2 border-dashed border-slate-200 rounded-xl py-8">Arrastra aqu  </div> : (
                               <AnimatePresence>
                                 {colTasks.map((task) => {
                                   const globalIndex = filteredTasks.findIndex(t => t.id === task.id);
@@ -1596,7 +1689,7 @@ export default function App() {
                                   return (
                                     <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 300, damping: 25 }} key={task.id} draggable={canEditTask ? "true" : "false"} onDragStart={(e) => handleDragStart(e as any, task)} onClick={() => { setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }} className={`relative bg-white p-4 rounded-xl shadow-sm border border-slate-200 transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing hover:border-blue-300 hover:shadow-md' : 'cursor-pointer hover:border-slate-300'}`}>
                                       <div className={`absolute -top-2 -right-2 w-7 h-7 rounded-full flex items-center justify-center text-xs shadow-md border ${globalIndex === 0 ? 'bg-yellow-100 border-yellow-300 text-lg' : globalIndex === 1 ? 'bg-slate-100 border-slate-300 text-lg' : globalIndex === 2 ? 'bg-orange-100 border-orange-300 text-lg' : 'bg-white border-slate-200 z-10'}`}>
-                                        {globalIndex === 0 ? '🏆' : globalIndex === 1 ? '🥈' : globalIndex === 2 ? '🥉' : <span className="font-black text-slate-500">#{globalIndex + 1}</span>}
+                                        {globalIndex === 0 ? '??' : globalIndex === 1 ? '??' : globalIndex === 2 ? '??' : <span className="font-black text-slate-500">#{globalIndex + 1}</span>}
                                       </div>
                                       <div className="flex justify-between items-start mb-2.5 pr-4"><span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${getPriorityColor(task.prioridad)}`}>{getPriorityLabel(task.prioridad)}</span></div>
                                       <h4 className="text-sm font-bold text-slate-800 mb-1 leading-snug line-clamp-2">{task.actividad}</h4>
@@ -1678,7 +1771,7 @@ export default function App() {
                     const projectTasks = tasks.filter(t => t.proyecto_id === project.id);
                     const progressRaw = projectTasks.length > 0 ? (projectTasks.reduce((acc, t) => acc + (Number(t.porcentaje_avance) || 0), 0) / projectTasks.length) : 0;
                     const lider = allUsers.find(u => u.id === project.lider_id);
-                    const liderName = lider ? `${lider.nombre} ${lider.apellido}` : 'Sin líder asignado';
+                    const liderName = lider ? `${lider.nombre} ${lider.apellido}` : 'Sin l  der asignado';
                     const projectOverdueDays = project.estado === 'Activo' ? getDaysOverdue(project.fecha_fin || '', project.estado) : 0;
 
                     return (
@@ -1687,9 +1780,9 @@ export default function App() {
                           <div className="flex items-center gap-4 flex-1">
                             <div className={`p-3 rounded-xl ${projectOverdueDays > 0 ? 'bg-red-50 text-red-600' : project.prioritario ? 'bg-orange-50 text-orange-600' : 'bg-indigo-50 text-indigo-600'}`}><FolderKanban size={20}/></div>
                             <div>
-                              <div className="flex items-center gap-2"><h3 className="font-bold text-slate-900 text-lg">{project.nombre}</h3>{project.prioritario && <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded uppercase tracking-tighter">🔥 Prioritario</span>}{projectOverdueDays > 0 && <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-tighter">⚠️ Atrasado</span>}</div>
-                              <p className="text-xs text-slate-500 line-clamp-1">{project.descripcion || 'Sin descripción'}</p>
-                              <div className="flex items-center gap-1 mt-1 text-[10px] font-bold text-slate-400 uppercase"><UserIcon size={10} /> Líder: <span className="text-indigo-500">{liderName}</span></div>
+                              <div className="flex items-center gap-2"><h3 className="font-bold text-slate-900 text-lg">{project.nombre}</h3>{project.prioritario && <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded uppercase tracking-tighter">?? Prioritario</span>}{projectOverdueDays > 0 && <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-tighter">?? Atrasado</span>}</div>
+                              <p className="text-xs text-slate-500 line-clamp-1">{project.descripcion || 'Sin descripci  n'}</p>
+                              <div className="flex items-center gap-1 mt-1 text-[10px] font-bold text-slate-400 uppercase"><UserIcon size={10} /> L  der: <span className="text-indigo-500">{liderName}</span></div>
                             </div>
                           </div>
                           <div className="flex items-center gap-8">
@@ -1721,13 +1814,13 @@ export default function App() {
                                       return (
                                         <div key={t.id} className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-200 transition-colors group mb-2">
                                           <div className="flex items-center justify-between p-3">
-                                            <div className="flex flex-col gap-1 w-1/3 min-w-[200px]"><span className="text-sm font-bold text-slate-800 line-clamp-1" title={t.actividad}>{t.actividad}</span><div className="flex items-center gap-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${getPriorityColor(t.prioridad)}`}>{getPriorityLabel(t.prioridad)}</span><span className={`text-[10px] font-bold ${tOverdue > 0 ? 'text-red-500' : 'text-slate-400'}`}>{t.fecha_fin} {tOverdue > 0 && '⚠️'}</span></div></div>
+                                            <div className="flex flex-col gap-1 w-1/3 min-w-[200px]"><span className="text-sm font-bold text-slate-800 line-clamp-1" title={t.actividad}>{t.actividad}</span><div className="flex items-center gap-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${getPriorityColor(t.prioridad)}`}>{getPriorityLabel(t.prioridad)}</span><span className={`text-[10px] font-bold ${tOverdue > 0 ? 'text-red-500' : 'text-slate-400'}`}>{t.fecha_fin} {tOverdue > 0 && '??'}</span></div></div>
                                             <div className="flex-1 px-4 flex items-center gap-3 justify-center"><div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(t.porcentaje_avance)}`} style={{ width: `${t.porcentaje_avance}%` }} /></div><span className={`text-[10px] font-bold w-6 text-right ${getProgressTextColor(t.porcentaje_avance)}`}>{t.porcentaje_avance}%</span></div>
                                             <div className="flex items-center gap-4 justify-end w-1/3"><span className={`text-[9px] font-black px-2 py-1 rounded uppercase ${getStatusColor(t.estado)}`}>{t.estado}</span><div className="flex items-center gap-1.5" title={String(t.responsable)}><div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] uppercase border border-slate-200">{String(t.responsable || 'U').charAt(0)}</div><span className="text-[10px] font-bold text-slate-500 uppercase hidden sm:block w-16 truncate">{String(t.responsable || 'Usuario').split(' ')[0]}</span></div><button onClick={() => { setSelectedTask(t); setDetailsTab('subtasks'); setIsDetailsModalOpen(true); fetchTaskDetails(t.id!); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Ver Detalles"><Eye size={16} /></button></div>
                                           </div>
                                           {totalSubtasks > 0 && canView && (
                                             <>
-                                              <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-1.5 flex items-center"><button onClick={() => toggleTaskSubtasksExpand(t.id!)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 hover:text-blue-600 transition-colors w-max"><ChevronDown size={14} className={`transition-transform ${isTaskSubExpanded ? 'rotate-180' : ''}`} /> ↳ Subtareas ({completedSubtasks}/{totalSubtasks})</button></div>
+                                              <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-1.5 flex items-center"><button onClick={() => toggleTaskSubtasksExpand(t.id!)} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 hover:text-blue-600 transition-colors w-max"><ChevronDown size={14} className={`transition-transform ${isTaskSubExpanded ? 'rotate-180' : ''}`} /> ? Subtareas ({completedSubtasks}/{totalSubtasks})</button></div>
                                               <AnimatePresence>
                                                 {isTaskSubExpanded && (<motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-4 pb-3 pt-1 border-t border-slate-100 bg-slate-50 overflow-hidden">{t.subtasks?.map((st: any) => (<div key={st.id} className="flex items-center gap-2 py-1.5 border-b border-slate-100/50 last:border-0"><button disabled={!canToggle} onClick={(e) => { e.stopPropagation(); canToggle && handleToggleSubtask(st.id, st.completada); }} className={`transition-colors ${st.completada ? 'text-emerald-500' : 'text-slate-300'} ${canToggle ? 'hover:text-blue-500 cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>{st.completada ? <CheckSquare size={14} /> : <Square size={14} />}</button><span className={`text-xs ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>{st.titulo}</span></div>))}</motion.div>)}
                                               </AnimatePresence>
@@ -1738,7 +1831,7 @@ export default function App() {
                                     })}
                                   </div>
                                 )}
-                                {currentUser?.can_create_tasks && <button onClick={() => { setEditingItem(null); setPreselectedProjectId(project.id!); setCurrentView('tasks'); setIsModalOpen(true); }} className="flex items-center gap-2 text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors w-max shadow-sm"><Plus size={14} /> Añadir Tarea a este Proyecto</button>}
+                                {currentUser?.can_create_tasks && <button onClick={() => { setEditingItem(null); setPreselectedProjectId(project.id!); setCurrentView('tasks'); setIsModalOpen(true); }} className="flex items-center gap-2 text-xs font-bold text-indigo-600 bg-indigo-50 px-4 py-2 rounded-xl hover:bg-indigo-100 transition-colors w-max shadow-sm"><Plus size={14} /> A?adir Tarea a este Proyecto</button>}
                               </div>
                             </motion.div>
                           )}
@@ -1756,13 +1849,13 @@ export default function App() {
               <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">Filtro Maestro por Área</h3>
-                    <p className="text-sm text-slate-500">Selecciona un área para visualizar todas sus actividades</p>
+                    <h3 className="text-lg font-bold text-slate-900">Filtro Maestro por   rea</h3>
+                    <p className="text-sm text-slate-500">Selecciona un   rea para visualizar todas sus actividades</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <Filter className="text-slate-400" size={20} />
                     <select className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[240px]" value={controlAreaId || ''} onChange={(e) => setControlAreaId(e.target.value ? parseInt(e.target.value) : null)}>
-                      <option value="">Todas las Áreas Autorizadas</option>
+                      <option value="">Todas las   reas Autorizadas</option>
                       {areas.filter(a => {
                         if (currentUser?.is_admin) return true;
                         const autorizadas = currentUser?.areas_autorizadas ? String(currentUser.areas_autorizadas).split(',') : [];
@@ -1775,14 +1868,14 @@ export default function App() {
                 <div className="flex gap-4 mt-6 pt-6 border-t border-slate-100">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input type="text" placeholder="Buscar actividad en supervisión..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    <input type="text" placeholder="Buscar actividad en supervisi  n..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                   </div>
                   <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                     <option value="All">Todos los Estados</option>
                     <option value="Planeado">Planeado</option>
                     <option value="En curso">En curso</option>
                     <option value="En espera">En espera</option>
-                    <option value="Atrasadas">Atrasadas ⚠️</option>
+                    <option value="Atrasadas">Atrasadas ??</option>
                     <option value="Completado">Completado</option>
                   </select>
                 </div>
@@ -1860,7 +1953,7 @@ export default function App() {
                   </table>
                 </div>
               ) : (
-                 <div className="p-8 text-center text-slate-400 text-sm mt-6 bg-white rounded-2xl border border-slate-200">No hay tareas para supervisar en esta área.</div>
+                 <div className="p-8 text-center text-slate-400 text-sm mt-6 bg-white rounded-2xl border border-slate-200">No hay tareas para supervisar en esta   rea.</div>
               )}
             </>
           )}
@@ -1869,7 +1962,7 @@ export default function App() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {allUsers.length === 0 ? <div className="col-span-full p-8 text-center text-slate-400 text-sm">No hay usuarios para mostrar.</div> : (
                 allUsers.map(user => {
-                  const areaName = areas.find(a => a.id === user.area_id)?.nombre || (user as any).area_nombre || 'Sin Área';
+                  const areaName = areas.find(a => a.id === user.area_id)?.nombre || (user as any).area_nombre || 'Sin   rea';
                   return (
                     <div key={user.id} className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-all group relative">
                        <div className="flex items-start justify-between mb-4">
@@ -1880,7 +1973,7 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2 mb-1"><h3 className="font-bold text-slate-900">{user.nombre} {user.apellido}</h3>{user.is_admin ? <span className="text-[8px] font-black bg-red-600 text-white px-1.5 py-0.5 rounded uppercase tracking-tighter">Admin</span> : null}</div>
-                      <p className="text-xs text-slate-500 mb-4">{user.cargo} • {areaName}</p>
+                      <p className="text-xs text-slate-500 mb-4">{user.cargo} ? {areaName}</p>
                     </div>
                   );
                 })
@@ -1890,7 +1983,7 @@ export default function App() {
           
           {currentView === 'areas' && (
              <div className="max-w-3xl">
-               {areas.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm bg-white rounded-2xl border border-slate-200">No hay áreas creadas o hubo un problema al cargarlas desde el servidor.</div> : renderAreaTree()}
+               {areas.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm bg-white rounded-2xl border border-slate-200">No hay   reas creadas o hubo un problema al cargarlas desde el servidor.</div> : renderAreaTree()}
              </div>
           )}
         </div>
@@ -1902,7 +1995,7 @@ export default function App() {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden">
               <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="text-lg font-bold text-slate-900">{editingItem ? 'Editar' : 'Nuevo'} {(currentView === 'tasks' || currentView === 'control') ? 'Tarea' : currentView === 'users' ? 'Usuario' : currentView === 'projects' ? 'Proyecto' : 'Área'}</h3>
+                <h3 className="text-lg font-bold text-slate-900">{editingItem ? 'Editar' : 'Nuevo'} {(currentView === 'tasks' || currentView === 'control') ? 'Tarea' : currentView === 'users' ? 'Usuario' : currentView === 'projects' ? 'Proyecto' : '  rea'}</h3>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600"><X size={20} /></button>
               </div>
 
@@ -1911,7 +2004,7 @@ export default function App() {
                 {(currentView === 'tasks' || currentView === 'control') && (
                   <div className="space-y-6">
                     <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">1. Identificación Básica</h4>
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">1. Identificaci  n B  sica</h4>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase">Actividad</label>
                         <input name="actividad" required defaultValue={editingItem?.actividad} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
@@ -1925,9 +2018,9 @@ export default function App() {
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Área / Origen</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">  rea / Origen</label>
                           <select name="area_origen_id" defaultValue={editingItem?.area_origen_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
-                            <option value="">Selecciona un área</option>
+                            <option value="">Selecciona un   rea</option>
                             {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                           </select>
                         </div>
@@ -1938,14 +2031,14 @@ export default function App() {
                           <input name="tipo" placeholder="Ej: Mejora, Soporte, Desarrollo..." defaultValue={editingItem?.tipo} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Temática</label>
-                          <input name="tematica" placeholder="Ej: Facturación Electrónica" defaultValue={editingItem?.tematica} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Tem  tica</label>
+                          <input name="tematica" placeholder="Ej: Facturaci  n Electr  nica" defaultValue={editingItem?.tematica} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
                         </div>
                       </div>
                     </div>
 
                     <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">2. Asignación y Tiempos</h4>
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">2. Asignaci  n y Tiempos</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Gerente / Jefe Responsable</label>
@@ -1999,21 +2092,21 @@ export default function App() {
                     </div>
 
                     <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm space-y-4">
-                      <h4 className="text-xs font-black text-indigo-800 uppercase tracking-widest mb-2 border-b border-indigo-200 pb-2">3. Métricas y Evaluación (Matriz)</h4>
+                      <h4 className="text-xs font-black text-indigo-800 uppercase tracking-widest mb-2 border-b border-indigo-200 pb-2">3. M  tricas y Evaluaci  n (Matriz)</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Alineación Estratégica</label>
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Alineaci  n Estrat  gica</label>
                           <select name="alineacion_estrategica" defaultValue={editingItem?.alineacion_estrategica || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
-                            <option value="">Seleccione una opción</option>
+                            <option value="">Seleccione una opci  n</option>
                             <option value="WIG 1 Crecimiento de Ingresos">WIG 1 Crecimiento de Ingresos</option>
-                            <option value="WIG 2 Reducción y control del costo">WIG 2 Reducción y control del costo</option>
-                            <option value="WIG 3 Satisfacción del cliente">WIG 3 Satisfacción del cliente</option>
+                            <option value="WIG 2 Reducci  n y control del costo">WIG 2 Reducci  n y control del costo</option>
+                            <option value="WIG 3 Satisfacci  n del cliente">WIG 3 Satisfacci  n del cliente</option>
                           </select>
                         </div>
                         <div className="space-y-1 flex flex-col justify-end">
                            <label className="flex items-center gap-3 p-2 bg-white rounded-xl border border-indigo-200 cursor-pointer hover:bg-indigo-100 transition-colors h-[38px]">
                              <input type="checkbox" name="requiere_inversion" defaultChecked={editingItem?.requiere_inversion} className="w-4 h-4 text-indigo-600 rounded border-indigo-300" />
-                             <span className="text-sm font-bold text-indigo-900">Requiere Inversión Económica</span>
+                             <span className="text-sm font-bold text-indigo-900">Requiere Inversi  n Econ  mica</span>
                            </label>
                         </div>
                       </div>
@@ -2021,29 +2114,29 @@ export default function App() {
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-indigo-600 uppercase">Impacto Financiero/Operativo</label>
                           <select name="impacto" defaultValue={editingItem?.impacto || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
-                            <option value="">Seleccione una opción</option>
+                            <option value="">Seleccione una opci  n</option>
                             <option value="1. Bajo">1. Bajo</option>
                             <option value="2. Medio">2. Medio</option>
                             <option value="3. Alto">3. Alto</option>
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Viabilidad Técnica</label>
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Viabilidad T  cnica</label>
                           <select name="viabilidad_tecnica" defaultValue={editingItem?.viabilidad_tecnica || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
-                            <option value="">Seleccione una opción</option>
+                            <option value="">Seleccione una opci  n</option>
                             <option value="1. Alta Complejidad">1. Alta Complejidad</option>
                             <option value="2. Media Complejidad">2. Media Complejidad</option>
                             <option value="3. Baja Complejidad">3. Baja Complejidad</option> 
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Calificación Total</label>
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Calificaci  n Total</label>
                           <div className="w-full px-4 py-2 bg-indigo-100/50 border border-indigo-200 rounded-xl text-indigo-400 text-sm font-medium italic">
-                            {editingItem?.calificacion ? `⭐ ${editingItem.calificacion} Puntos` : 'Automático'}
+                            {editingItem?.calificacion ? `? ${editingItem.calificacion} Puntos` : 'Autom  tico'}
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Orden de Ejecución (Manual)</label>
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Orden de Ejecuci  n (Manual)</label>
                           <input name="orden_ejecucion" type="number" min="1" placeholder="Ej: 1" defaultValue={editingItem?.orden_ejecucion || ''} className="w-full px-4 py-2 bg-white border border-indigo-400 rounded-xl outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 font-bold text-indigo-900 shadow-sm" />
                         </div>
                       </div>
@@ -2092,12 +2185,12 @@ export default function App() {
                     <div className="space-y-1 mb-4">
                        <label className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl border border-orange-200 cursor-pointer hover:bg-orange-100 transition-colors">
                          <input type="checkbox" name="prioritario" defaultChecked={editingItem?.prioritario} className="w-5 h-5 text-orange-600 rounded border-orange-300" />
-                         <span className="text-sm font-bold text-orange-800">Marcar como Proyecto Prioritario 🔥</span>
+                         <span className="text-sm font-bold text-orange-800">Marcar como Proyecto Prioritario ??</span>
                        </label>
                     </div>
                     <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Nombre del Proyecto</label><input name="nombre" required defaultValue={editingItem?.nombre} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" /></div>
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Descripción</label><textarea name="descripcion" rows={3} defaultValue={editingItem?.descripcion} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 resize-none" /></div>
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Líder del Proyecto</label><select name="lider_id" defaultValue={editingItem?.lider_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"><option value="">Sin Asignar</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre} {u.apellido}</option>)}</select></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Descripci  n</label><textarea name="descripcion" rows={3} defaultValue={editingItem?.descripcion} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 resize-none" /></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">L  der del Proyecto</label><select name="lider_id" defaultValue={editingItem?.lider_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"><option value="">Sin Asignar</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre} {u.apellido}</option>)}</select></div>
                     <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Inicio</label><input name="fecha_inicio" type="date" defaultValue={editingItem?.fecha_inicio} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Fin Estimada</label><input name="fecha_fin" type="date" defaultValue={editingItem?.fecha_fin} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500" /></div></div>
                     <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Estado</label><select name="estado" defaultValue={editingItem?.estado || 'Activo'} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500"><option value="Activo">Activo</option><option value="Finalizado">Finalizado</option><option value="Cancelado">Cancelado</option></select></div>
                   </>
@@ -2106,13 +2199,13 @@ export default function App() {
                 {currentView === 'users' && (
                   <>
                     <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Nombre</label><input name="nombre" required defaultValue={editingItem?.nombre} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Apellido</label><input name="apellido" required defaultValue={editingItem?.apellido} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div></div>
-                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Email</label><input name="email" type="email" required defaultValue={editingItem?.email} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Contraseña {editingItem && '(Dejar vacío si no cambia)'}</label><input name="password" type="password" required={!editingItem} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div></div>
-                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Cargo</label><input name="cargo" required defaultValue={editingItem?.cargo} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Área</label><select name="area_id" defaultValue={editingItem?.area_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"><option value="">Sin Área</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></div></div>
+                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Email</label><input name="email" type="email" required defaultValue={editingItem?.email} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Contrase?a {editingItem && '(Dejar vac  o si no cambia)'}</label><input name="password" type="password" required={!editingItem} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div></div>
+                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Cargo</label><input name="cargo" required defaultValue={editingItem?.cargo} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">  rea</label><select name="area_id" defaultValue={editingItem?.area_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"><option value="">Sin   rea</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></div></div>
                     {formJefe && <div className="p-3 bg-blue-50 text-blue-700 rounded-xl text-sm font-medium border border-blue-100 flex items-center gap-2"><Shield size={16} /> Jefe Directo Calculado: <span className="font-bold">{formJefe}</span></div>}
                     <div className="space-y-4 pt-4 border-t border-slate-100">
                       <h4 className="font-bold text-slate-900 text-sm">Permisos y Accesos</h4>
                       <div className="flex flex-col gap-3">
-                         <label className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200 cursor-pointer hover:bg-amber-100"><input type="checkbox" name="debe_cambiar_password" defaultChecked={editingItem?.debe_cambiar_password} className="w-5 h-5 text-amber-600 rounded border-amber-300" /><span className="text-sm font-bold text-amber-800">Exigir cambio de contraseña al ingresar</span></label>
+                         <label className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200 cursor-pointer hover:bg-amber-100"><input type="checkbox" name="debe_cambiar_password" defaultChecked={editingItem?.debe_cambiar_password} className="w-5 h-5 text-amber-600 rounded border-amber-300" /><span className="text-sm font-bold text-amber-800">Exigir cambio de contrase?a al ingresar</span></label>
                          <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100"><input type="checkbox" name="is_admin" defaultChecked={editingItem?.is_admin} className="w-5 h-5 text-blue-600 rounded" /><span className="text-sm font-bold text-slate-700">Administrador Total del Sistema</span></label>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -2121,23 +2214,23 @@ export default function App() {
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Proyectos</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_view" defaultChecked={editingItem?.perm_projects_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_create" defaultChecked={editingItem?.perm_projects_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_edit" defaultChecked={editingItem?.perm_projects_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_delete" defaultChecked={editingItem?.perm_projects_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Reportes</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_reports_view" defaultChecked={editingItem?.perm_reports_view} className="rounded text-indigo-600" /> Ver Reportes</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Usuarios</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_view" defaultChecked={editingItem?.perm_users_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_create" defaultChecked={editingItem?.perm_users_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_edit" defaultChecked={editingItem?.perm_users_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_delete" defaultChecked={editingItem?.perm_users_delete} className="rounded text-blue-600" /> Eliminar</label></div>
-                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Áreas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_view" defaultChecked={editingItem?.perm_areas_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_create" defaultChecked={editingItem?.perm_areas_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_edit" defaultChecked={editingItem?.perm_areas_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_delete" defaultChecked={editingItem?.perm_areas_delete} className="rounded text-blue-600" /> Eliminar</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">  reas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_view" defaultChecked={editingItem?.perm_areas_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_create" defaultChecked={editingItem?.perm_areas_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_edit" defaultChecked={editingItem?.perm_areas_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_delete" defaultChecked={editingItem?.perm_areas_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                       </div>
 
                       <div className="p-4 border border-slate-200 rounded-xl bg-white space-y-3 shadow-sm">
-                         <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={accesoSupervision} onChange={(e) => setAccesoSupervision(e.target.checked)} className="w-5 h-5 text-blue-600 rounded" /><span className="text-sm font-bold text-slate-700">Otorgar acceso a "Control de Gestión"</span></label>
+                         <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={accesoSupervision} onChange={(e) => setAccesoSupervision(e.target.checked)} className="w-5 h-5 text-blue-600 rounded" /><span className="text-sm font-bold text-slate-700">Otorgar acceso a "Control de Gesti  n"</span></label>
                          
-                         {/* FIX 2: Checkbox para habilitar edición en Control de Gestión */}
+                         {/* FIX 2: Checkbox para habilitar edici  n en Control de Gesti  n */}
                          {accesoSupervision && (
                            <label className="flex items-center gap-3 cursor-pointer mt-2 pl-8">
                              <input type="checkbox" name="perm_control_edit" defaultChecked={editingItem?.perm_control_edit} className="w-5 h-5 text-indigo-600 rounded border-indigo-300" />
-                             <span className="text-sm font-bold text-indigo-700">Permitir EDITAR tareas desde la vista de Control de Gestión</span>
+                             <span className="text-sm font-bold text-indigo-700">Permitir EDITAR tareas desde la vista de Control de Gesti  n</span>
                            </label>
                          )}
 
                          {accesoSupervision && (
                            <div className="pl-8 space-y-2 mt-2 border-t border-slate-100 pt-3">
-                             <span className="text-[10px] font-bold text-slate-400 uppercase block mb-2">Selecciona las áreas que puede supervisar:</span>
+                             <span className="text-[10px] font-bold text-slate-400 uppercase block mb-2">Selecciona las   reas que puede supervisar:</span>
                              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-2">
                                {areas.map(a => (<label key={a.id} className="flex items-center gap-2 text-sm p-2 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-200 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" checked={selectedAreas.includes(a.id!)} onChange={(e) => { if (e.target.checked) setSelectedAreas(prev => [...prev, a.id!]); else setSelectedAreas(prev => prev.filter(id => id !== a.id!)); }} />{a.nombre}</label>))}
                              </div>
@@ -2150,14 +2243,14 @@ export default function App() {
 
                 {currentView === 'areas' && (
                   <>
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Nombre del Área</label><input name="nombre" required defaultValue={editingItem?.nombre} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div>
-                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Descripción</label><textarea name="descripcion" required rows={3} defaultValue={editingItem?.descripcion} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none" /></div>
-                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Área Padre (Opcional)</label><select name="parent_area_id" defaultValue={editingItem?.parent_area_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"><option value="">Ninguna (Nivel Raíz)</option>{areas.filter(a => a.id !== editingItem?.id).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Jefe de Área (Opcional)</label><select name="jefe_id" defaultValue={editingItem?.jefe_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"><option value="">Sin Asignar</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre} {u.apellido}</option>)}</select></div></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Nombre del   rea</label><input name="nombre" required defaultValue={editingItem?.nombre} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" /></div>
+                    <div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Descripci  n</label><textarea name="descripcion" required rows={3} defaultValue={editingItem?.descripcion} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none" /></div>
+                    <div className="grid grid-cols-2 gap-4"><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">  rea Padre (Opcional)</label><select name="parent_area_id" defaultValue={editingItem?.parent_area_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"><option value="">Ninguna (Nivel Ra  z)</option>{areas.filter(a => a.id !== editingItem?.id).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}</select></div><div className="space-y-1"><label className="text-[10px] font-bold text-slate-400 uppercase">Jefe de   rea (Opcional)</label><select name="jefe_id" defaultValue={editingItem?.jefe_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500"><option value="">Sin Asignar</option>{allUsers.map(u => <option key={u.id} value={u.id}>{u.nombre} {u.apellido}</option>)}</select></div></div>
                   </>
                 )}
                 
                 {currentView !== 'tasks' && currentView !== 'control' && currentView !== 'users' && currentView !== 'areas' && currentView !== 'projects' && (
-                  <p className="text-center text-sm text-slate-500 py-8">Formulario de administración {currentView}</p>
+                  <p className="text-center text-sm text-slate-500 py-8">Formulario de administraci  n {currentView}</p>
                 )}
 
               <div className="pt-6 flex gap-3">
@@ -2216,7 +2309,7 @@ export default function App() {
                                         <button disabled={!canToggle} onClick={() => canToggle && handleToggleSubtask(st.id, st.completada)} className={`transition-colors ${st.completada ? 'text-emerald-500' : 'text-slate-300'} ${canToggle ? 'hover:text-blue-500 cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>{st.completada ? <CheckSquare size={20} /> : <Square size={20} />}</button>
                                         <span className={`flex-1 text-sm ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-bold'}`}>{st.titulo}</span>
                                         {canDelete && <button onClick={() => handleDeleteSubtask(st.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded-md transition-colors" title="Eliminar"><Trash2 size={16}/></button>}
-                                        {!canDelete && !canToggle && <Lock size={14} className="text-slate-300" title="Sin permisos de modificación" />}
+                                        {!canDelete && !canToggle && <Lock size={14} className="text-slate-300" title="Sin permisos de modificaci  n" />}
                                      </div>
                                      );
                                   })
@@ -2235,7 +2328,7 @@ export default function App() {
                         <div className="flex flex-col h-[50vh]">
                           <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
                              {comments.length === 0 ? (
-                               <div className="flex flex-col items-center justify-center h-full text-slate-400"><Activity size={32} className="mb-2 opacity-50" /><span className="text-sm font-medium">No hay avances registrados aún</span></div>
+                               <div className="flex flex-col items-center justify-center h-full text-slate-400"><Activity size={32} className="mb-2 opacity-50" /><span className="text-sm font-medium">No hay avances registrados a  n</span></div>
                              ) : (
                                comments.map(c => {
                                  const isQuote = c.content.startsWith('> Citando a'); let quotePart = ''; let replyPart = c.content;
@@ -2255,11 +2348,40 @@ export default function App() {
                                               </div>
                                            )}
 
-                                           <p className="text-sm leading-relaxed whitespace-pre-wrap">{replyPart}</p>
+                                      {/* MODO EDICI  N VS MODO LECTURA */}
+                                           {editingCommentId === c.id ? (
+                                              <div className="flex flex-col gap-2 mt-1">
+                                                <textarea 
+                                                  value={editCommentContent} 
+                                                  onChange={(e) => setEditCommentContent(e.target.value)} 
+                                                  className="w-full p-2 text-sm text-slate-800 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-400"
+                                                  rows={3}
+                                                />
+                                                <div className="flex justify-end gap-2">
+                                                  <button onClick={() => setEditingCommentId(null)} className="px-3 py-1 text-[10px] font-bold bg-slate-200 text-slate-600 rounded hover:bg-slate-300">Cancelar</button>
+                                                  <button onClick={() => handleUpdateComment(c.id)} className="px-3 py-1 text-[10px] font-bold bg-emerald-500 text-white rounded hover:bg-emerald-600">Guardar</button>
+                                                </div>
+                                              </div>
+                                           ) : (
+                                              <p className="text-sm leading-relaxed whitespace-pre-wrap">{replyPart}</p>
+                                           )}
+
                                            <span className={`text-[9px] font-medium text-right ${c.user_id === currentUser?.id ? 'text-blue-200' : 'text-slate-400'}`}>{new Date(c.created_at).toLocaleString('es-CO', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                                         </div>
-                                        <div className={`flex items-center ${c.user_id === currentUser?.id ? 'justify-end' : 'justify-start'}`}><button onClick={() => setReplyingTo(c)} className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all px-2"><Reply size={12} /> Citar avance</button></div>
-                                      </div>
+                                        
+                                        <div className={`flex items-center gap-3 mt-1 ${c.user_id === currentUser?.id ? 'justify-end' : 'justify-start'}`}>
+                                          <button onClick={() => setReplyingTo(c)} className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all px-1"><Reply size={12} /> Citar</button>
+                                          
+                                          {/* BOTONES EDITAR Y ELIMINAR (Solo due?o y si no est   completada/cancelada) */}
+                                          {c.user_id === currentUser?.id && selectedTask?.estado !== 'Completado' && selectedTask?.estado !== 'Cancelado' && (
+                                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                                              <button onClick={() => { setEditingCommentId(c.id); setEditCommentContent(replyPart); }} className="text-slate-400 hover:text-blue-500" title="Editar"><Edit2 size={12} /></button>
+                                              <button onClick={() => handleDeleteComment(c.id)} className="text-slate-400 hover:text-red-500" title="Eliminar"><Trash2 size={12} /></button>
+                                            </div>
+                                          )}
+                                        </div>
+
+                                     </div>
                                    </div>
                                  );
                                })
