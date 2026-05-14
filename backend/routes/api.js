@@ -64,6 +64,8 @@ router.post('/tasks', taskController.create);
 router.post('/tasks/bulk', taskController.createBulk); // 👈 ¡AQUÍ ESTÁ LA NUEVA RUTA MASIVA!
 router.put('/tasks/:id', taskController.update);   
 router.delete('/tasks/:id', taskController.delete); 
+// Ruta para edición rápida (inline)
+router.patch('/tasks/:id/quick', taskController.quickUpdate);
 
 // --- NUEVAS RUTAS DE SUBTAREAS ---
 router.post('/tasks/:id/subtasks', taskController.addSubtask);

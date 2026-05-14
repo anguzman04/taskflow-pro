@@ -802,17 +802,17 @@ const handleUpdateComment = async (commentId: number) => {
   }; */
   
   
-  const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!currentUser || isSubmitting) return; // <-- Evita la doble ejecuci  n
-    if (selectedResponsibles.length === 0) { alert("?? Debes seleccionar al menos un responsable para la tarea."); return; }
+    if (!currentUser || isSubmitting) return; 
+    if (selectedResponsibles.length === 0) { alert("⚠️ Debes seleccionar al menos un responsable para la tarea."); return; }
     
     const formData = new FormData(e.currentTarget);
     const fInicio = formData.get('fecha_inicio') as string;
     const fFin = formData.get('fecha_fin') as string;
-    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("?? Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
+    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("⚠️ Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
 
-    setIsSubmitting(true); // <-- Bloqueamos el bot  n inmediatamente
+    setIsSubmitting(true);
 
     try {
       const taskData = {
@@ -825,13 +825,19 @@ const handleUpdateComment = async (commentId: number) => {
         proyecto_id: formData.get('proyecto_id') ? parseInt(formData.get('proyecto_id') as string) : null,
         area_origen_id: formData.get('area_origen_id') ? parseInt(formData.get('area_origen_id') as string) : null,
         gerente_responsable: formData.get('gerente_responsable'), tipo: formData.get('tipo'), tematica: formData.get('tematica'),
-        compromiso_semanal: formData.get('compromiso_semanal'), requiere_inversion: formData.get('requiere_inversion') === 'S  ',
+        compromiso_semanal: formData.get('compromiso_semanal'), requiere_inversion: formData.get('requiere_inversion') === 'Sí',
         alineacion_estrategica: formData.get('alineacion_estrategica'), impacto: formData.get('impacto'), viabilidad_tecnica: formData.get('viabilidad_tecnica'),
         orden_ejecucion: formData.get('orden_ejecucion') ? parseInt(formData.get('orden_ejecucion') as string) : null
       };
       
-      const res = await fetch(editingItem ? `/api/tasks/${editingItem.id}` : '/api/tasks', { method: editingItem ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(taskData) });
+      const res = await fetch(editingItem ? `/api/tasks/${editingItem.id}` : '/api/tasks', { 
+        method: editingItem ? 'PUT' : 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(taskData) 
+      });
+      
       if (res.status === 401) { handleLogout(); return; }
+      
       if (res.ok) { 
           setIsModalOpen(false); 
           fetchTasks(); 
@@ -839,13 +845,48 @@ const handleUpdateComment = async (commentId: number) => {
           setPreselectedProjectId(null); 
           setSelectedResponsibles([]); 
       } 
-      else { const errorData = await res.json(); alert(errorData.error || "Ocurri   un error al guardar la tarea."); }
+      else { 
+          // AQUÍ SE CAPTURA EL MENSAJE DE AUDITORÍA
+          const errorData = await res.json(); 
+          alert(errorData.error || "Ocurrió un error al guardar la tarea."); 
+      }
     } catch (err) {
-      alert("Error de conexi  n al servidor al guardar la tarea.");
+      alert("Error de conexión al servidor al guardar la tarea.");
     } finally {
-      setIsSubmitting(false); // <-- Liberamos el bot  n sin importar el resultado
+      setIsSubmitting(false); 
     }
   };
+
+
+
+
+const handleQuickUpdate = async (taskId: number, field: string, value: any) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/quick`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value })
+      });
+      if (res.ok) {
+        fetchTasks(); 
+        fetchControlTasks(); 
+      } else {
+        // AQUÍ ESTÁ LA CORRECCIÓN: Leemos el mensaje exacto de auditoría
+        const errorData = await res.json();
+        alert(errorData.error || "Error al actualizar el dato.");
+        
+        // Refrescamos la pantalla para borrar el intento fallido de la vista
+        fetchTasks(); 
+        fetchControlTasks();
+      }
+    } catch (err) {
+      alert("Error de conexión al servidor.");
+      fetchTasks();
+    }
+  };
+
+
+
   
   
 
@@ -1315,13 +1356,79 @@ const renderDynamicCell = (colId: string, task: any, index: number, isControlVie
             {overdueDays > 0 && <span className="mt-1 inline-block text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded uppercase">⏳ {overdueDays} DÍAS</span>}
           </td>
         );
-      case 'avance':
+  /*     case 'avance':
         return (
           <td key={`avance-${task.id}`} className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-12 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(task.porcentaje_avance)}`} style={{ width: `${task.porcentaje_avance}%` }} /></div><span className={`text-[10px] font-bold ${getProgressTextColor(task.porcentaje_avance)}`}>{task.porcentaje_avance}%</span></div></td>
         );
       case 'estado':
         return (
           <td key={`estado-${task.id}`} className="px-6 py-4"><span className={`text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider ${getStatusColor(task.estado)}`}>{task.estado}</span></td>
+        ); */
+
+case 'avance':
+        const isManualProgress = totalSubtasks === 0; 
+        return (
+          <td key={`avance-${task.id}`} className="px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-12 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full ${getProgressBarColor(task.porcentaje_avance)}`} style={{ width: `${task.porcentaje_avance}%` }} />
+              </div>
+              
+              {/* AQUÍ ESTÁ LA MAGIA: Agregamos !isTaskLocked para desaparecer el input en 100% */}
+              {isManualProgress && (currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked)) ? (
+                <div className="flex items-center gap-0.5">
+                  <input 
+                    key={`input-avance-${task.id}-${task.porcentaje_avance}`} // Obliga a resetear si hay error
+                    type="number" 
+                    min="0" max="100" 
+                    defaultValue={task.porcentaje_avance}
+                    onBlur={(e) => {
+                      let val = parseFloat(e.target.value);
+                      if (isNaN(val)) val = 0;
+                      if (val < 0) val = 0;
+                      if (val > 100) val = 100;
+                      if (val !== task.porcentaje_avance) {
+                        handleQuickUpdate(task.id!, 'porcentaje_avance', val);
+                      }
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    className={`w-10 text-[10px] font-bold p-1 border border-transparent hover:border-slate-200 focus:border-blue-400 rounded text-center outline-none bg-transparent hover:bg-white transition-all ${getProgressTextColor(task.porcentaje_avance)}`}
+                    title="Editar avance (Presiona Enter para guardar)"
+                  />
+                  <span className="text-[10px] font-bold text-slate-400">%</span>
+                </div>
+              ) : (
+                <span className={`text-[10px] font-bold ${getProgressTextColor(task.porcentaje_avance)}`}>{task.porcentaje_avance}%</span>
+              )}
+            </div>
+          </td>
+        );
+
+      case 'estado':
+        return (
+          <td key={`estado-${task.id}`} className="px-6 py-4">
+            {/* AQUÍ TAMBIÉN: Agregamos !isTaskLocked para desaparecer el select */}
+            {(currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked)) ? (
+              <select
+                key={`select-estado-${task.id}-${task.estado}`} // Reset visual si falla
+                value={task.estado}
+                onChange={(e) => handleQuickUpdate(task.id!, 'estado', e.target.value)}
+                className={`text-[9px] font-black px-2 py-1.5 rounded-full uppercase tracking-wider outline-none cursor-pointer border border-transparent hover:border-slate-300 transition-all ${getStatusColor(task.estado)} appearance-none text-center text-align-last-center`}
+                style={{ textAlignLast: 'center' }}
+                title="Cambiar estado"
+              >
+                <option value="Planeado" className="text-slate-700 bg-white">Planeado</option>
+                <option value="En curso" className="text-slate-700 bg-white">En curso</option>
+                <option value="En espera" className="text-slate-700 bg-white">En espera</option>
+                <option value="Completado" className="text-slate-700 bg-white">Completado</option>
+                <option value="Cancelado" className="text-slate-700 bg-white">Cancelado</option>
+              </select>
+            ) : (
+              <span className={`text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-wider ${getStatusColor(task.estado)}`}>
+                {task.estado}
+              </span>
+            )}
+          </td>
         );
 
 

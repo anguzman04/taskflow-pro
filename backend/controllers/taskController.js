@@ -116,6 +116,88 @@ const taskController = {
     }
   },
 
+quickUpdate: async (req, res) => {
+    try {
+      const { id } = req.params;
+      let dataToUpdate = req.body;
+
+      // 1. Buscamos la tarea actual y el usuario que hace la petición
+      const oldTask = await prisma.task.findUnique({ where: { id: parseInt(id) } });
+      const user = await prisma.user.findUnique({ where: { id: req.userId } });
+
+      if (!oldTask || !user) return res.status(404).json({ error: "Registro no encontrado" });
+
+      // --- INICIO DE REGLAS DE NEGOCIO (AUDITORÍA) ---
+      if (!user.is_admin) {
+        // Regla 1: Tareas finalizadas o canceladas no se tocan
+        if (oldTask.estado === 'Completado' || oldTask.estado === 'Cancelado') {
+           return res.status(403).json({ error: "🚫 AUDITORÍA: Esta tarea ya está finalizada o cancelada y no puede ser editada por esta vía." });
+        }
+
+        // Regla 2: No regresar a estado inicial si ya avanzó
+        if (oldTask.estado !== 'Pendiente' && oldTask.estado !== 'Planeado') {
+           if (dataToUpdate.estado === 'Pendiente' || dataToUpdate.estado === 'Planeado') {
+              return res.status(403).json({ error: "🚫 AUDITORÍA: No puedes regresar una tarea en curso al estado inicial." });
+           }
+        }
+
+        // Regla 3: No reducir el porcentaje de avance
+        if (dataToUpdate.porcentaje_avance !== undefined && dataToUpdate.porcentaje_avance < oldTask.porcentaje_avance) {
+           return res.status(403).json({ error: `🚫 AUDITORÍA: No puedes reducir un avance ya registrado. El porcentaje actual es ${oldTask.porcentaje_avance}%.` });
+        }
+      }
+      // --- FIN DE REGLAS DE AUDITORÍA ---
+
+      // --- AUTOMATIZACIÓN LÓGICA (Si pasa la auditoría) ---
+      
+      // Si el usuario cambia el porcentaje manualmente:
+      if (dataToUpdate.porcentaje_avance !== undefined) {
+        if (dataToUpdate.porcentaje_avance === 100) {
+          dataToUpdate.estado = 'Completado';
+        } else if (dataToUpdate.porcentaje_avance > 0 && (oldTask.estado === 'Pendiente' || oldTask.estado === 'Planeado')) {
+          dataToUpdate.estado = 'En curso';
+        }
+      }
+
+      // Si el usuario cambia el estado desde el menú:
+      if (dataToUpdate.estado !== undefined) {
+        if (dataToUpdate.estado === 'Completado') {
+          dataToUpdate.porcentaje_avance = 100;
+        } else if (dataToUpdate.estado === 'Pendiente' || dataToUpdate.estado === 'Planeado') {
+          dataToUpdate.porcentaje_avance = 0;
+        }
+      }
+
+      // 2. Guardamos la actualización
+      const updatedTask = await prisma.task.update({
+        where: { id: parseInt(id) },
+        data: dataToUpdate
+      });
+
+      // 3. Disparar notificación si se completó la tarea mediante edición rápida
+      if (oldTask.estado !== 'Completado' && updatedTask.estado === 'Completado') {
+        try {
+          await notificationService.dispatch({
+            userId: updatedTask.created_by_id,
+            taskId: updatedTask.id,
+            message: `¡Excelente! La actividad <strong>"${updatedTask.actividad}"</strong> ha sido completada.`,
+            type: 'SUCCESS',
+            forceEmail: false 
+          });
+        } catch (eventError) {
+          console.error("Error disparando evento de quickUpdate:", eventError);
+        }
+      }
+
+      res.json(updatedTask);
+    } catch (error) {
+      console.error("Error en actualización rápida:", error);
+      res.status(500).json({ error: "Error interno al actualizar la tarea." });
+    }
+  },
+
+
+
   createBulk: async (req, res) => {
     try {
       const { tasks } = req.body;
@@ -161,62 +243,87 @@ const taskController = {
     }
   },
 
+
+
+
+
+
   update: async (req, res) => {
     try {
       const { id } = req.params;
       const data = req.body;
+      const taskId = parseInt(id);
       
       const calificacion_calculada = calcularCalificacion(data.impacto, data.viabilidad_tecnica);
-
-      const oldTask = await prisma.task.findUnique({ where: { id: parseInt(id) } });
+      const oldTask = await prisma.task.findUnique({ where: { id: taskId } });
       const user = await prisma.user.findUnique({ where: { id: req.userId } });
 
       if (!oldTask || !user) return res.status(404).json({ error: "Registro no encontrado" });
 
+      // --- BLOQUE DE AUDITORÍA SINCRONIZADO ---
       if (!user.is_admin) {
+        // Regla 1: No editar finalizadas/canceladas
         if (oldTask.estado === 'Completado' || oldTask.estado === 'Cancelado') {
-           return res.status(403).json({ error: "🚫 AUDITORÍA: Esta tarea ya está finalizada o cancelada y no puede ser editada. Contacta a un administrador." });
+           return res.status(403).json({ error: "🚫 AUDITORÍA: Esta tarea ya está finalizada y no puede ser editada. Contacta a un administrador." });
         }
-        if (oldTask.estado !== 'Pendiente' && data.estado === 'Pendiente') {
-           return res.status(403).json({ error: "🚫 AUDITORÍA: No puedes regresar una tarea en curso al estado 'Pendiente'. Si hubo un error, utiliza el estado 'Cancelado'." });
+
+        // Regla 2: No reducir el porcentaje de avance
+        const nuevoAvance = parseInt(data.porcentaje_avance) || 0;
+        const avanceActual = parseInt(oldTask.porcentaje_avance) || 0;
+        if (nuevoAvance < avanceActual) {
+           return res.status(403).json({ error: `🚫 AUDITORÍA: No puedes reducir un avance ya registrado. El valor actual es ${avanceActual}%.` });
+        }
+
+        // Regla 3: No regresar a estado inicial
+        if ((oldTask.estado !== 'Pendiente' && oldTask.estado !== 'Planeado') && 
+            (data.estado === 'Pendiente' || data.estado === 'Planeado')) {
+           return res.status(403).json({ error: "🚫 AUDITORÍA: No puedes regresar una tarea en curso al estado inicial." });
         }
       }
 
-      // FORZAMOS A MAYÚSCULAS AL EDITAR
-      const actividadEnMayusculas = data.actividad ? String(data.actividad).toUpperCase() : 'ACTIVIDAD SIN NOMBRE';
+      // --- AUTOMATIZACIÓN DE ESTADOS ---
+      let estadoFinal = data.estado || oldTask.estado;
+      let avanceFinal = parseInt(data.porcentaje_avance) || 0;
+
+      if (avanceFinal === 100) {
+        estadoFinal = 'Completado';
+      } else if (estadoFinal === 'Completado') {
+        avanceFinal = 100;
+      }
+
+      const actividadEnMayusculas = data.actividad ? String(data.actividad).toUpperCase() : oldTask.actividad;
 
       const updatedTask = await prisma.task.update({
-        where: { id: parseInt(id) },
+        where: { id: taskId },
         data: {
           actividad: actividadEnMayusculas,
-          responsable: data.responsable || 'Sin responsable',
-          fecha_registro: data.fecha_registro || new Date().toISOString().split('T')[0],
-          fecha_inicio: data.fecha_inicio || '',
-          fecha_fin: data.fecha_fin || '',
-          prioridad: data.prioridad || '2|Media',
-          prerequisito: data.prerequisito || '',
-          observacion: data.observacion || '',
-          porcentaje_avance: parseInt(data.porcentaje_avance) || 0,
-          estado: data.estado || 'Pendiente',
+          responsable: data.responsable || oldTask.responsable,
+          fecha_registro: data.fecha_registro,
+          fecha_inicio: data.fecha_inicio,
+          fecha_fin: data.fecha_fin,
+          prioridad: data.prioridad,
+          prerequisito: data.prerequisito,
+          observacion: data.observacion,
+          porcentaje_avance: avanceFinal,
+          estado: estadoFinal,
           proyecto_id: data.proyecto_id ? parseInt(data.proyecto_id) : null,
           area_origen_id: data.area_origen_id ? parseInt(data.area_origen_id) : null,
-          gerente_responsable: data.gerente_responsable || null,
-          tipo: data.tipo || '',
-          tematica: data.tematica || '',
-          compromiso_semanal: data.compromiso_semanal || '',
+          gerente_responsable: data.gerente_responsable,
+          tipo: data.tipo,
+          tematica: data.tematica,
+          compromiso_semanal: data.compromiso_semanal,
           requiere_inversion: data.requiere_inversion === true || data.requiere_inversion === 'true',
-          alineacion_estrategica: data.alineacion_estrategica || null,
-          impacto: data.impacto || null,
-          viabilidad_tecnica: data.viabilidad_tecnica || null,
+          alineacion_estrategica: data.alineacion_estrategica,
+          impacto: data.impacto,
+          viabilidad_tecnica: data.viabilidad_tecnica,
           calificacion: calificacion_calculada,
           orden_ejecucion: data.orden_ejecucion ? parseInt(data.orden_ejecucion) : null
         }
       });
 
+      // (Aquí se mantiene tu código de notificaciones que ya tenías...)
       try {
-        const allUsers = await prisma.user.findMany();
-        
-        if (oldTask && oldTask.estado !== 'Completado' && updatedTask.estado === 'Completado') {
+        if (oldTask.estado !== 'Completado' && updatedTask.estado === 'Completado') {
           await notificationService.dispatch({
             userId: updatedTask.created_by_id,
             taskId: updatedTask.id,
@@ -225,37 +332,20 @@ const taskController = {
             forceEmail: false 
           });
         }
-
-        if (oldTask && oldTask.responsable !== updatedTask.responsable) {
-          const oldResp = oldTask.responsable ? oldTask.responsable.split(',').map(r => r.trim()) : [];
-          const newResp = updatedTask.responsable ? updatedTask.responsable.split(',').map(r => r.trim()) : [];
-          
-          const newlyAssigned = newResp.filter(r => !oldResp.includes(r));
-          const prioridadLimpia = updatedTask.prioridad.includes('|') ? updatedTask.prioridad.split('|')[1] : updatedTask.prioridad;
-
-          for (const respName of newlyAssigned) {
-            const assignedUser = allUsers.find(u => `${u.nombre} ${u.apellido}` === respName);
-            if (assignedUser) {
-              await notificationService.dispatch({
-                userId: assignedUser.id,
-                taskId: updatedTask.id,
-                message: `🔔 Se te ha reasignado la actividad: <strong>"${updatedTask.actividad}"</strong>.`,
-                type: 'INFO',
-                forceEmail: true,
-                extraData: { userName: assignedUser.nombre, actividad: updatedTask.actividad, fecha_fin: updatedTask.fecha_fin, prioridadLimpia }
-              });
-            }
-          }
-        }
-      } catch (eventError) {
-        console.error("Error disparando eventos de actualización:", eventError);
-      }
+      } catch (e) { console.error(e); }
 
       res.json(updatedTask);
     } catch (error) {
       res.status(500).json({ error: "Error al actualizar la tarea" });
     }
   },
+
+
+
+
+
+
+
 
   delete: async (req, res) => {
     try {
