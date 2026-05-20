@@ -133,7 +133,7 @@ const ChartsSection = ({ data }: { data: any[] }) => {
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-6">
           <PieChartIcon size={16} className="text-slate-400"/>
-          <span className="text-sm font-bold text-slate-900">Distribuci  n por Estado</span>
+          <span className="text-sm font-bold text-slate-900">Distribución por Estado</span>
         </div>
         <div className="h-64 flex items-center justify-center">
           {pieData.length > 0 ? (
@@ -151,7 +151,7 @@ const ChartsSection = ({ data }: { data: any[] }) => {
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-6">
           <BarChart3 size={16} className="text-slate-400"/>
-          <span className="text-sm font-bold text-slate-900">Avance Promedio seg  n Prioridad</span>
+          <span className="text-sm font-bold text-slate-900">Avance Promedio según Prioridad</span>
         </div>
         <div className="h-64">
           {priorityStats.length > 0 ? (
@@ -838,7 +838,7 @@ const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
       
       if (res.status === 401) { handleLogout(); return; }
       
-      if (res.ok) { 
+  /*     if (res.ok) { 
           setIsModalOpen(false); 
           fetchTasks(); 
           fetchControlTasks(); 
@@ -849,17 +849,49 @@ const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
           // AQUÍ SE CAPTURA EL MENSAJE DE AUDITORÍA
           const errorData = await res.json(); 
           alert(errorData.error || "Ocurrió un error al guardar la tarea."); 
+      } */
+
+
+
+
+/* 
+
+    } catch (err) {
+      alert("Error de conexión al servidor al guardar la tarea.");
+    } finally {
+      setIsSubmitting(false); 
+    }
+  }; */
+if (res.ok) { 
+          setIsModalOpen(false); 
+          fetchTasks(); 
+          fetchControlTasks(); 
+          setPreselectedProjectId(null); 
+          setSelectedResponsibles([]); 
+      } 
+      else { 
+          const errorData = await res.json(); 
+          alert(errorData.error || "Ocurrió un error al guardar la tarea."); 
+          
+          // 👇 REFRESH AUTOMÁTICO EN CASO DE ERROR
+          setIsModalOpen(false); // Cerramos el modal para limpiar la vista
+          fetchTasks();          // Recargamos los datos reales de la BD
+          fetchControlTasks();
       }
     } catch (err) {
       alert("Error de conexión al servidor al guardar la tarea.");
+      
+      // 👇 REFRESH AUTOMÁTICO EN CASO DE CAÍDA DE RED
+      setIsModalOpen(false);
+      fetchTasks();
+      fetchControlTasks();
     } finally {
       setIsSubmitting(false); 
     }
   };
 
 
-
-
+/* 
 const handleQuickUpdate = async (taskId: number, field: string, value: any) => {
     try {
       const res = await fetch(`/api/tasks/${taskId}/quick`, {
@@ -882,6 +914,32 @@ const handleQuickUpdate = async (taskId: number, field: string, value: any) => {
     } catch (err) {
       alert("Error de conexión al servidor.");
       fetchTasks();
+    }
+  }; */
+
+const handleQuickUpdate = async (taskId: number, field: string, value: any) => {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/quick`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value })
+      });
+      if (res.ok) {
+        fetchTasks(); 
+        fetchControlTasks(); 
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Error al actualizar el dato.");
+        
+        // 👇 REFRESH AUTOMÁTICO: Obliga a la tabla a regresar al valor original
+        fetchTasks(); 
+        fetchControlTasks();
+      }
+    } catch (err) {
+      alert("Error de conexión al servidor.");
+      // 👇 REFRESH AUTOMÁTICO: Si hay error de red, repintamos la tabla
+      fetchTasks();
+      fetchControlTasks();
     }
   };
 
@@ -1382,7 +1440,7 @@ case 'avance':
                     type="number" 
                     min="0" max="100" 
                     defaultValue={task.porcentaje_avance}
-                    onBlur={(e) => {
+                 /*    onBlur={(e) => {
                       let val = parseFloat(e.target.value);
                       if (isNaN(val)) val = 0;
                       if (val < 0) val = 0;
@@ -1390,7 +1448,24 @@ case 'avance':
                       if (val !== task.porcentaje_avance) {
                         handleQuickUpdate(task.id!, 'porcentaje_avance', val);
                       }
+                    }} */
+onBlur={(e) => {
+                      let val = parseFloat(e.target.value);
+                      if (isNaN(val)) val = 0;
+                      if (val < 0) val = 0;
+                      if (val > 100) val = 100;
+                      
+                      if (val !== task.porcentaje_avance) {
+                        // 1. Enviamos la petición de cambio al servidor
+                        handleQuickUpdate(task.id!, 'porcentaje_avance', val);
+                        
+                        // 2. TRUCO DE UX: Regresamos la vista al valor original inmediatamente.
+                        // Si es exitoso, fetchTasks traerá el valor nuevo y lo repintará.
+                        // Si falla la auditoría, la pantalla ya corrigió el número erróneo sola.
+                        e.target.value = String(task.porcentaje_avance);
+                      }
                     }}
+
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                     className={`w-10 text-[10px] font-bold p-1 border border-transparent hover:border-slate-200 focus:border-blue-400 rounded text-center outline-none bg-transparent hover:bg-white transition-all ${getProgressTextColor(task.porcentaje_avance)}`}
                     title="Editar avance (Presiona Enter para guardar)"
@@ -1555,14 +1630,14 @@ case 'responsable':
                   ) : currentView === 'reports' ? (
                     <>
                       <h2 className="text-2xl font-bold text-slate-900 capitalize">Reportes Gerenciales</h2>
-                      <p className="text-slate-500 text-sm">Visualizaci  n de datos y m  tricas globales</p>
+                      <p className="text-slate-500 text-sm">Visualización de datos y métricas globales</p>
                     </>
                   ) : (
                     <>
                       <h2 className="text-2xl font-bold text-slate-900 capitalize">
-                        {currentView === 'users' ? 'Gesti  n de Usuarios' : currentView === 'areas' ? 'Gesti  n de   reas' : currentView === 'projects' ? 'Gesti  n de Proyectos' : 'Control de Gesti  n'}
+                        {currentView === 'users' ? 'Gestión de Usuarios' : currentView === 'areas' ? 'Gestión de áreas' : currentView === 'projects' ? 'Gestión de Proyectos' : 'Control de Gestión'}
                       </h2>
-                      <p className="text-slate-500 text-sm">Administraci  n y supervisi  n del sistema</p>
+                      <p className="text-slate-500 text-sm">Administración y supervisión del sistema</p>
                     </>
                   )}
                 </div>
@@ -1956,13 +2031,13 @@ case 'responsable':
               <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div>
-                    <h3 className="text-lg font-bold text-slate-900">Filtro Maestro por   rea</h3>
-                    <p className="text-sm text-slate-500">Selecciona un   rea para visualizar todas sus actividades</p>
+                    <h3 className="text-lg font-bold text-slate-900">Filtro Maestro por área</h3>
+                    <p className="text-sm text-slate-500">Selecciona un  área para visualizar todas sus actividades</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <Filter className="text-slate-400" size={20} />
                     <select className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[240px]" value={controlAreaId || ''} onChange={(e) => setControlAreaId(e.target.value ? parseInt(e.target.value) : null)}>
-                      <option value="">Todas las   reas Autorizadas</option>
+                      <option value="">Todas las  áreas Autorizadas</option>
                       {areas.filter(a => {
                         if (currentUser?.is_admin) return true;
                         const autorizadas = currentUser?.areas_autorizadas ? String(currentUser.areas_autorizadas).split(',') : [];
