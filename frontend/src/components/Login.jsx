@@ -149,7 +149,7 @@ const Login = () => {
                 
                 <div className="text-center pt-2">
                   <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                    Barranquilla Node - Secure Access Only
+                    ATLANTICQI - BARRANQUILLA
                   </span>
                 </div>
               </form>

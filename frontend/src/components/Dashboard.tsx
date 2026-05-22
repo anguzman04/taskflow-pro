@@ -945,6 +945,31 @@ const handleQuickUpdate = async (taskId: number, field: string, value: any) => {
 
 
 
+
+
+const handleDeleteEvidence = async (evidenceId: number) => {
+    if (!window.confirm("⚠️ ¿Estás seguro de que deseas eliminar esta evidencia? Esta acción no se puede deshacer y borrará el archivo permanentemente.")) return;
+
+    try {
+      const res = await fetch(`/api/tasks/evidence/${evidenceId}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        // Soft Refresh: Recargamos las tablas para que el archivo desaparezca de la vista instantáneamente
+        fetchTasks();
+        fetchControlTasks();
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Ocurrió un error al intentar eliminar la evidencia.");
+      }
+    } catch (err) {
+      alert("Error de conexión al servidor al intentar eliminar la evidencia.");
+    }
+  };
+
+
+
   
   
 
@@ -1004,6 +1029,8 @@ const handleQuickUpdate = async (taskId: number, field: string, value: any) => {
         perm_reports_view: formData.get('perm_reports_view') === 'on' ? 1 : 0,
         // FIX 2: Agregamos el nuevo permiso para edici  n en Control de Gesti  n
         perm_control_edit: formData.get('perm_control_edit') === 'on' ? 1 : 0,
+        can_download_evidence: formData.get('can_download_evidence') === 'on' ? true : false,
+        can_delete_evidence: formData.get('can_delete_evidence') === 'on' ? true : false,
         perm_subtasks_view: formData.get('perm_subtasks_view') === 'on' ? 1 : 0, perm_subtasks_create: formData.get('perm_subtasks_create') === 'on' ? 1 : 0,
         perm_subtasks_edit: formData.get('perm_subtasks_edit') === 'on' ? 1 : 0, perm_subtasks_delete: formData.get('perm_subtasks_delete') === 'on' ? 1 : 0,
       };
@@ -1449,7 +1476,7 @@ case 'avance':
                         handleQuickUpdate(task.id!, 'porcentaje_avance', val);
                       }
                     }} */
-onBlur={(e) => {
+                       onBlur={(e) => {
                       let val = parseFloat(e.target.value);
                       if (isNaN(val)) val = 0;
                       if (val < 0) val = 0;
@@ -2387,7 +2414,7 @@ case 'responsable':
                     <div className="space-y-4 pt-4 border-t border-slate-100">
                       <h4 className="font-bold text-slate-900 text-sm">Permisos y Accesos</h4>
                       <div className="flex flex-col gap-3">
-                         <label className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200 cursor-pointer hover:bg-amber-100"><input type="checkbox" name="debe_cambiar_password" defaultChecked={editingItem?.debe_cambiar_password} className="w-5 h-5 text-amber-600 rounded border-amber-300" /><span className="text-sm font-bold text-amber-800">Exigir cambio de contrase?a al ingresar</span></label>
+                         <label className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl border border-amber-200 cursor-pointer hover:bg-amber-100"><input type="checkbox" name="debe_cambiar_password" defaultChecked={editingItem?.debe_cambiar_password} className="w-5 h-5 text-amber-600 rounded border-amber-300" /><span className="text-sm font-bold text-amber-800">Exigir cambio de contraseña al ingresar</span></label>
                          <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100"><input type="checkbox" name="is_admin" defaultChecked={editingItem?.is_admin} className="w-5 h-5 text-blue-600 rounded" /><span className="text-sm font-bold text-slate-700">Administrador Total del Sistema</span></label>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -2396,23 +2423,46 @@ case 'responsable':
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Proyectos</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_view" defaultChecked={editingItem?.perm_projects_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_create" defaultChecked={editingItem?.perm_projects_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_edit" defaultChecked={editingItem?.perm_projects_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_delete" defaultChecked={editingItem?.perm_projects_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Reportes</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_reports_view" defaultChecked={editingItem?.perm_reports_view} className="rounded text-indigo-600" /> Ver Reportes</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Usuarios</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_view" defaultChecked={editingItem?.perm_users_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_create" defaultChecked={editingItem?.perm_users_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_edit" defaultChecked={editingItem?.perm_users_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_delete" defaultChecked={editingItem?.perm_users_delete} className="rounded text-blue-600" /> Eliminar</label></div>
-                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">  reas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_view" defaultChecked={editingItem?.perm_areas_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_create" defaultChecked={editingItem?.perm_areas_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_edit" defaultChecked={editingItem?.perm_areas_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_delete" defaultChecked={editingItem?.perm_areas_delete} className="rounded text-blue-600" /> Eliminar</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Areas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_view" defaultChecked={editingItem?.perm_areas_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_create" defaultChecked={editingItem?.perm_areas_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_edit" defaultChecked={editingItem?.perm_areas_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_delete" defaultChecked={editingItem?.perm_areas_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                       </div>
 
                       <div className="p-4 border border-slate-200 rounded-xl bg-white space-y-3 shadow-sm">
-                         <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={accesoSupervision} onChange={(e) => setAccesoSupervision(e.target.checked)} className="w-5 h-5 text-blue-600 rounded" /><span className="text-sm font-bold text-slate-700">Otorgar acceso a "Control de Gesti  n"</span></label>
+                         <label className="flex items-center gap-3 cursor-pointer"><input type="checkbox" checked={accesoSupervision} onChange={(e) => setAccesoSupervision(e.target.checked)} className="w-5 h-5 text-blue-600 rounded" /><span className="text-sm font-bold text-slate-700">Otorgar acceso a "Control de Gestión"</span></label>
                          
-                         {/* FIX 2: Checkbox para habilitar edici  n en Control de Gesti  n */}
+                         {/* FIX 2: Checkbox para habilitar edici  n en Control de Gestión */}
                          {accesoSupervision && (
                            <label className="flex items-center gap-3 cursor-pointer mt-2 pl-8">
                              <input type="checkbox" name="perm_control_edit" defaultChecked={editingItem?.perm_control_edit} className="w-5 h-5 text-indigo-600 rounded border-indigo-300" />
-                             <span className="text-sm font-bold text-indigo-700">Permitir EDITAR tareas desde la vista de Control de Gesti  n</span>
+                             <span className="text-sm font-bold text-indigo-700">Permitir EDITAR tareas desde la vista de Control de Gestión</span>
                            </label>
                          )}
 
+<label className="flex items-center gap-3 cursor-pointer mt-2 pl-8">
+     <input 
+       type="checkbox" 
+       name="can_download_evidence" 
+       defaultChecked={editingItem?.can_download_evidence} 
+       className="w-5 h-5 text-indigo-600 rounded border-indigo-300" 
+     />
+     <span className="text-sm font-bold text-indigo-700">Permitir DESCARGAR evidencias adjuntas</span>
+   </label>
+
+<label className="flex items-center gap-3 cursor-pointer mt-2 pl-8">
+     <input 
+       type="checkbox" 
+       name="can_delete_evidence" 
+       defaultChecked={editingItem?.can_delete_evidence} 
+       className="w-5 h-5 text-red-600 rounded border-red-300" 
+     />
+     <span className="text-sm font-bold text-red-700">Permitir ELIMINAR evidencias adjuntas</span>
+   </label>
+
+
+
+
                          {accesoSupervision && (
                            <div className="pl-8 space-y-2 mt-2 border-t border-slate-100 pt-3">
-                             <span className="text-[10px] font-bold text-slate-400 uppercase block mb-2">Selecciona las   reas que puede supervisar:</span>
+                             <span className="text-[10px] font-bold text-slate-400 uppercase block mb-2">Selecciona las areas que puede supervisar:</span>
                              <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-2">
                                {areas.map(a => (<label key={a.id} className="flex items-center gap-2 text-sm p-2 hover:bg-slate-50 rounded-lg border border-transparent hover:border-slate-200 cursor-pointer"><input type="checkbox" className="rounded text-blue-600" checked={selectedAreas.includes(a.id!)} onChange={(e) => { if (e.target.checked) setSelectedAreas(prev => [...prev, a.id!]); else setSelectedAreas(prev => prev.filter(id => id !== a.id!)); }} />{a.nombre}</label>))}
                              </div>
@@ -2608,8 +2658,28 @@ case 'responsable':
                                         <div key={att.id} className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors group">
                                            <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg shrink-0"><FileText size={20} /></div>
                                            <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-700 truncate" title={att.filename}>{att.filename || 'Archivo adjunto'}</p><p className="text-[10px] text-slate-400 font-medium">{new Date(att.uploaded_at).toLocaleString()}</p></div>
-                                           <a href={att.filepath} target="_blank" rel="noopener noreferrer" className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-emerald-600 hover:border-emerald-200 rounded-lg shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100"><Download size={16}/></a>
-                                        </div>
+                                          // <a href={att.filepath} target="_blank" rel="noopener noreferrer" className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-emerald-600 hover:border-emerald-200 rounded-lg shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100"><Download size={16}/></a>
+                                           {/* Solo los administradores o quienes tengan el permiso explícito verán el botón de descarga */}
+		{(currentUser?.is_admin || (currentUser as any)?.can_download_evidence) && (
+		  <a href={att.filepath} target="_blank" rel="noopener noreferrer" className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-emerald-600 hover:border-emerald-200 rounded-lg shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100" title="Descargar evidencia">
+			<Download size={16}/>
+		  </a>
+		)}
+		{/* 👇 NUEVO: Botón de Eliminación con Candado de Permiso (Línea Nueva) */}
+		{(currentUser?.is_admin || (currentUser as any)?.can_delete_evidence) && (
+		  <button 
+			type="button"
+			onClick={() => handleDeleteEvidence(att.id)} 
+			className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 rounded-lg shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100 ml-1"
+			title="Eliminar evidencia"
+		  >
+			<Trash2 size={16}/>
+		  </button>
+		)}
+
+
+
+                                           </div>
                                      ))}
                                   </div>
                                )}

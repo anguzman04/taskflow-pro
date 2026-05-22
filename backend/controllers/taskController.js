@@ -463,7 +463,59 @@ quickUpdate: async (req, res) => {
     } catch (error) {
       res.status(500).json({ error: "Error al eliminar la subtarea" });
     }
+  },
+
+deleteEvidence: async (req, res) => {
+    const fs = require('fs');
+    const path = require('path');
+
+    try {
+      const { id } = req.params;
+      const evidenceId = parseInt(id);
+
+      // 1. CONTROL DE SEGURIDAD: Verificar el usuario y sus permisos de auditoría
+      const user = await prisma.user.findUnique({ where: { id: req.userId } });
+      if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+      if (!user.is_admin && !user.can_delete_evidence) {
+        return res.status(403).json({ error: "🚫 AUDITORÍA: No tienes los permisos requeridos para eliminar archivos de evidencia." });
+      }
+
+      // 2. BUSCAR EL REGISTRO: Obtener la ruta del archivo físico antes de borrarlo de la BD
+      // Nota: Reemplaza 'taskEvidence' por el nombre exacto de tu modelo en Prisma si cambia (ej: 'evidence' o 'attachment')
+      const evidence = await prisma.taskEvidence.findUnique({
+        where: { id: evidenceId }
+      });
+
+      if (!evidence) {
+        return res.status(404).json({ error: "La evidencia ya no existe o ya fue eliminada." });
+      }
+
+      // 3. ELIMINACIÓN FÍSICA: Borrar el archivo del disco del servidor
+      if (evidence.filepath) {
+        // Reconstruimos la ruta absoluta hacia tu carpeta de subidas (ej: 'backend/uploads/...')
+        const absolutePath = path.join(__dirname, '..', evidence.filepath);
+        
+        if (fs.existsSync(absolutePath)) {
+          fs.unlinkSync(absolutePath); // Elimina el archivo físico de forma síncrona y segura
+        }
+      }
+
+      // 4. ELIMINACIÓN LÓGICA: Limpiar el registro de la Base de Datos
+      await prisma.taskEvidence.delete({
+        where: { id: evidenceId }
+      });
+
+      res.json({ message: "Evidencia y archivo físico eliminados con éxito." });
+    } catch (error) {
+      console.error("Error al eliminar evidencia:", error);
+      res.status(500).json({ error: "Error interno del servidor al procesar la eliminación." });
+    }
   }
+
+
+
+
 };
 
 module.exports = taskController;

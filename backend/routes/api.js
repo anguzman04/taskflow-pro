@@ -87,6 +87,8 @@ router.post('/comments', commentController.create);
 // 👇 AÑADE ESTAS DOS RUTAS NUEVAS
 router.put('/comments/:id', commentController.update);
 router.delete('/comments/:id', commentController.delete);
+// Ruta para eliminar una evidencia específica verificando el ID
+router.delete('/tasks/evidence/:id', taskController.deleteEvidence);
 
 
 // Notificaciones

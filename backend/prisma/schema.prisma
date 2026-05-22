@@ -23,6 +23,8 @@ model User {
   can_create_tasks      Boolean        @default(false)
   can_edit_tasks        Boolean        @default(false)
   can_delete_tasks      Boolean        @default(false)
+  can_download_evidence Boolean        @default(false)
+  can_delete_evidence   Boolean        @default(false)
   
   // --- NUEVOS PERMISOS DE SUBTAREAS ---
   perm_subtasks_view    Boolean        @default(false)
