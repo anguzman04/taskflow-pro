@@ -1168,7 +1168,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
           return '2|Media';
       };
 
-      const parseExcelDate = (cell: ExcelJS.Cell | undefined) => {
+  /*     const parseExcelDate = (cell: ExcelJS.Cell | undefined) => {
         if (!cell) return '';
         if (cell.value instanceof Date) {
             const d = cell.value;
@@ -1183,7 +1183,26 @@ const handleDeleteEvidence = async (evidenceId: number) => {
             return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
         }
         return text;
-      };
+      }; */
+	  
+	  
+	  const parseExcelDate = (cell: ExcelJS.Cell | undefined) => {
+          if (!cell) return '';
+          if (cell.value instanceof Date) {
+            const d = cell.value;
+            // 🚀 CORRECCIÓN: Usamos UTC para extraer el número exacto e ignorar la zona horaria local
+            const year = d.getUTCFullYear();
+            const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(d.getUTCDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          }
+          const text = cell.text || String(cell.value || '').trim();
+          if (text.match(/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/)) {
+            const parts = text.split(/[\/\-]/);
+            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+          }
+          return text;
+        };
 
       const normalizeForMatch = (str: string) => {
           return str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase() : '';

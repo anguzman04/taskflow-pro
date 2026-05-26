@@ -2,6 +2,49 @@ const { PrismaClient } = require('@prisma/client');
 const notificationService = require('./notificationService'); 
 const prisma = new PrismaClient();
 
+// --- NUEVA FUNCIÓN: INTERCEPTOR DE ZONA HORARIA Y FORMATOS ---
+// --- NUEVO INTERCEPTOR: DESTRUCTOR DE ZONAS HORARIAS ---
+// --- INTERCEPTOR DE FECHAS EXCEL ---
+const procesarFechaSegura = (fechaInput) => {
+  if (!fechaInput) return new Date(); // Fallback si la celda está vacía
+
+  // 1. Si Excel manda un número de serie (ej. 46167 que es 25/05/2026)
+  if (typeof fechaInput === 'number' || (!isNaN(fechaInput) && String(fechaInput).trim() !== '')) {
+    const num = Number(fechaInput);
+    if (num < 100000) {
+      const excelDate = new Date(Math.round((num - 25569) * 86400 * 1000));
+      return new Date(excelDate.getUTCFullYear(), excelDate.getUTCMonth(), excelDate.getUTCDate(), 12, 0, 0);
+    }
+  }
+
+  let dateStr = String(fechaInput).trim();
+
+  // 2. Si viene con Zona Horaria (Ej: "2026-05-24T23:00:00.000Z"), la decapitamos
+  if (dateStr.includes('T')) {
+    dateStr = dateStr.split('T')[0]; 
+  }
+
+  let year, month, day;
+
+  // 3. Extracción Quirúrgica
+  if (dateStr.includes('-')) {
+    const parts = dateStr.split('-');
+    if (parts[0].length === 4) { 
+      year = parseInt(parts[0], 10); month = parseInt(parts[1], 10) - 1; day = parseInt(parts[2], 10);
+    } else { 
+      day = parseInt(parts[0], 10); month = parseInt(parts[1], 10) - 1; year = parseInt(parts[2], 10);
+    }
+  } else if (dateStr.includes('/')) {
+    const parts = dateStr.split('/');
+    day = parseInt(parts[0], 10); month = parseInt(parts[1], 10) - 1; year = parseInt(parts[2], 10);
+  } else {
+    return new Date();
+  }
+
+  // 4. EL ANCLA: Clavamos la fecha a las 12:00 del mediodía local para evitar que brinque de día
+  return new Date(year, month, day, 12, 0, 0);
+};
+
 const calcularCalificacion = (impacto, viabilidad) => {
   if (!impacto || !viabilidad) return null;
   const valImpacto = parseInt(impacto.split('.')[0]) || 0;
@@ -32,13 +75,36 @@ const actualizarPorcentajeTarea = async (taskId) => {
 };
 
 const taskController = {
-  getAll: async (req, res) => {
+/*   getAll: async (req, res) => {
     try {
       const tasks = await prisma.task.findMany({ 
         orderBy: { id: 'desc' },
         include: { subtasks: true }
       });
       res.json(tasks);
+    } catch (error) {
+      res.status(500).json({ error: "Error al obtener las tareas" });
+    }
+  }, */
+  
+  
+  getAll: async (req, res) => {
+    try {
+      const tasks = await prisma.task.findMany({ 
+        orderBy: { id: 'desc' },
+        include: { subtasks: true }
+      });
+
+      // Interceptamos y limpiamos el formato ISO de Prisma antes de enviarlo a React
+      const formattedTasks = tasks.map(task => ({
+        ...task,
+        // Tomamos el string '2026-05-11T00:00:00.000Z', lo partimos por la 'T' y enviamos solo '2026-05-11'
+        fecha_registro: task.fecha_registro ? new Date(task.fecha_registro).toISOString().split('T')[0] : '',
+        fecha_inicio: task.fecha_inicio ? new Date(task.fecha_inicio).toISOString().split('T')[0] : '',
+        fecha_fin: task.fecha_fin ? new Date(task.fecha_fin).toISOString().split('T')[0] : ''
+      }));
+
+      res.json(formattedTasks);
     } catch (error) {
       res.status(500).json({ error: "Error al obtener las tareas" });
     }
@@ -62,9 +128,16 @@ const taskController = {
         data: {
           actividad: actividadEnMayusculas,
           responsable: responsable || 'Sin responsable',
-          fecha_registro: fecha_registro || new Date().toISOString().split('T')[0],
+      /*     fecha_registro: fecha_registro || new Date().toISOString().split('T')[0],
           fecha_inicio: fecha_inicio || '',
-          fecha_fin: fecha_fin || '',
+          fecha_fin: fecha_fin || '', */
+		  // ... dentro de prisma.task.create({ data: { ...
+       fecha_registro: fecha_registro ? procesarFechaSegura(fecha_registro) : procesarFechaSegura(new Date()),
+          fecha_inicio: fecha_inicio ? procesarFechaSegura(fecha_inicio) : procesarFechaSegura(new Date()),
+          fecha_fin: fecha_fin ? procesarFechaSegura(fecha_fin) : procesarFechaSegura(new Date()),
+
+		  
+		  
           prioridad: prioridad || '2|Media',
           prerequisito: prerequisito || '',
           observacion: observacion || '',
@@ -198,36 +271,41 @@ quickUpdate: async (req, res) => {
 
 
 
-  createBulk: async (req, res) => {
+createBulk: async (req, res) => {
     try {
       const { tasks } = req.body;
       if (!tasks || !Array.isArray(tasks)) return res.status(400).json({error: "Formato de datos inválido"});
 
+      // 🟢 EL RADAR: Imprimimos la primera tarea para ver qué carajos envía Excel
+      if (tasks.length > 0) {
+        console.log("📥 [EXCEL] Payload crudo recibido (Primera tarea):", tasks[0].fecha_inicio, "Tipo:", typeof tasks[0].fecha_inicio);
+      }
+
       const mappedTasks = tasks.map(data => {
         const calificacion_calculada = calcularCalificacion(data.impacto, data.viabilidad_tecnica);
-        
-        // FORZAMOS A MAYÚSCULAS EN LA IMPORTACIÓN MASIVA
         const actividadEnMayusculas = data.actividad ? String(data.actividad).toUpperCase() : 'ACTIVIDAD IMPORTADA';
 
         return {
           actividad: actividadEnMayusculas,
           responsable: data.responsable || 'Sin responsable',
-          fecha_registro: data.fecha_registro,
-          fecha_inicio: data.fecha_inicio,
-          fecha_fin: data.fecha_fin,
+          // 👇 APLICAMOS EL INTERCEPTOR DE FECHAS AQUÍ
+          fecha_registro: procesarFechaSegura(data.fecha_registro),
+          fecha_inicio: procesarFechaSegura(data.fecha_inicio),
+          fecha_fin: procesarFechaSegura(data.fecha_fin),
           prioridad: data.prioridad,
           prerequisito: data.prerequisito,
           observacion: data.observacion,
-          porcentaje_avance: data.porcentaje_avance,
-          estado: data.estado,
+          porcentaje_avance: parseInt(data.porcentaje_avance) || 0,
+          estado: data.estado || 'Pendiente',
           created_by_id: req.userId,
-          proyecto_id: data.proyecto_id,
-          area_origen_id: data.area_origen_id,
+          proyecto_id: data.proyecto_id ? parseInt(data.proyecto_id) : null,
+          area_origen_id: data.area_origen_id ? parseInt(data.area_origen_id) : null,
           gerente_responsable: data.gerente_responsable,
           tipo: data.tipo,
           tematica: data.tematica,
           compromiso_semanal: data.compromiso_semanal,
-          requiere_inversion: data.requiere_inversion,
+          // Blindaje extra para los booleanos en Excel
+          requiere_inversion: data.requiere_inversion === true || data.requiere_inversion === 'true' || data.requiere_inversion === 1,
           alineacion_estrategica: data.alineacion_estrategica,
           impacto: data.impacto,
           viabilidad_tecnica: data.viabilidad_tecnica,
@@ -239,6 +317,7 @@ quickUpdate: async (req, res) => {
       const result = await prisma.task.createMany({ data: mappedTasks, skipDuplicates: true });
       res.status(201).json({ message: "Importación exitosa", count: result.count });
     } catch (error) {
+      console.error("❌ Error en createBulk:", error);
       res.status(500).json({ error: "Fallo en la base de datos al importar" });
     }
   },
@@ -298,9 +377,16 @@ quickUpdate: async (req, res) => {
         data: {
           actividad: actividadEnMayusculas,
           responsable: data.responsable || oldTask.responsable,
-          fecha_registro: data.fecha_registro,
+      /*     fecha_registro: data.fecha_registro,
           fecha_inicio: data.fecha_inicio,
-          fecha_fin: data.fecha_fin,
+          fecha_fin: data.fecha_fin, */
+		  
+		  // ... dentro de prisma.task.update({ data: { ...
+fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) : oldTask.fecha_registro,
+          fecha_inicio: data.fecha_inicio ? procesarFechaSegura(data.fecha_inicio) : oldTask.fecha_inicio,
+          fecha_fin: data.fecha_fin ? procesarFechaSegura(data.fecha_fin) : oldTask.fecha_fin,
+// ...
+		  
           prioridad: data.prioridad,
           prerequisito: data.prerequisito,
           observacion: data.observacion,
@@ -376,51 +462,84 @@ quickUpdate: async (req, res) => {
       res.status(500).json({ error: "Error al eliminar la tarea" });
     }
   },
+  
+  
+  
 
-  getControlTasks: async (req, res) => {
+ getControlTasks: async (req, res) => {
     try {
       const userId = parseInt(req.query.userId);
       const areaId = req.query.areaId ? parseInt(req.query.areaId) : null;
-      const supervisor = await prisma.user.findUnique({ where: { id: userId } });
+
+      // 1. Obtener el supervisor (Solo pedimos a la BD los campos necesarios para ahorrar memoria)
+      const supervisor = await prisma.user.findUnique({ 
+        where: { id: userId },
+        select: { is_admin: true, acceso_supervision: true, areas_autorizadas: true }
+      });
+      
       if (!supervisor) return res.status(404).json({ error: "Usuario no encontrado" });
 
+      // 2. Determinar las áreas autorizadas
       let areasAutorizadas = [];
+      
       if (supervisor.is_admin) {
-        const allAreas = await prisma.area.findMany();
-        areasAutorizadas = allAreas.map(a => a.id);
+        // SUPER OPTIMIZACIÓN: Si es admin, tiene derecho a ver TODO. 
+        // No necesitamos calcular usuarios, simplemente devolvemos todas las tareas y nos ahorramos consultas.
+        const allTasks = await prisma.task.findMany({ 
+          orderBy: { id: 'desc' },
+          include: { subtasks: true }
+        });
+        return res.json(allTasks);
       } else if (supervisor.acceso_supervision) {
+        // Extraemos el array de áreas permitidas para este supervisor
         areasAutorizadas = supervisor.areas_autorizadas ? supervisor.areas_autorizadas.split(',').map(Number) : [];
       } else {
         return res.status(403).json({ error: "No tienes permisos de supervisión" });
       }
 
-      const allTasks = await prisma.task.findMany({ 
+      // Si el frontend solicita filtrar por un área en específico, validamos que tenga permiso
+      if (areaId) {
+        if (areasAutorizadas.includes(areaId)) {
+          areasAutorizadas = [areaId]; // Reducimos el filtro solo a esta área
+        } else {
+          return res.json([]); // Pide un área no autorizada, devolvemos vacío
+        }
+      }
+
+      if (areasAutorizadas.length === 0) return res.json([]);
+
+      // 3. Obtener SOLO LOS NOMBRES de los usuarios que pertenecen a las áreas autorizadas
+      const validUsers = await prisma.user.findMany({
+        where: { area_id: { in: areasAutorizadas } },
+        select: { nombre: true, apellido: true }
+      });
+
+      if (validUsers.length === 0) return res.json([]); // Si no hay personal en esas áreas, no hay tareas que supervisar
+
+      // 4. Construir las reglas de búsqueda (Operador OR de Prisma)
+      // Le decimos: "Busca si el string 'responsable' contiene 'Nombre Apellido'"
+      const orConditions = validUsers.map(u => ({
+        responsable: { contains: `${u.nombre} ${u.apellido}` }
+      }));
+
+      // 5. Ejecutar la búsqueda delegando el 100% del esfuerzo a PostgreSQL
+      const controlTasks = await prisma.task.findMany({ 
+        where: { OR: orConditions },
         orderBy: { id: 'desc' },
         include: { subtasks: true }
       });
-      const allUsers = await prisma.user.findMany();
 
-      const controlTasks = allTasks.filter(task => {
-        const responsablesArray = task.responsable ? task.responsable.split(',').map(r => r.trim()) : [];
-        let isValidForControl = false;
-        for (const respName of responsablesArray) {
-           const responsableUser = allUsers.find(u => `${u.nombre} ${u.apellido}` === respName);
-           const taskAreaId = responsableUser ? responsableUser.area_id : null;
-           if (taskAreaId) {
-             if (areaId && taskAreaId === areaId && areasAutorizadas.includes(taskAreaId)) {
-               isValidForControl = true; break;
-             } else if (!areaId && areasAutorizadas.includes(taskAreaId)) {
-               isValidForControl = true; break;
-             }
-           }
-        }
-        return isValidForControl;
-      });
       res.json(controlTasks);
     } catch (error) {
+      console.error("❌ Error en getControlTasks optimizado:", error);
       res.status(500).json([]);
     }
   },
+  
+  
+  
+  
+  
 
   addSubtask: async (req, res) => {
     try {
@@ -464,6 +583,10 @@ quickUpdate: async (req, res) => {
       res.status(500).json({ error: "Error al eliminar la subtarea" });
     }
   },
+  
+  
+  
+  
 
 deleteEvidence: async (req, res) => {
     const fs = require('fs');
@@ -481,9 +604,8 @@ deleteEvidence: async (req, res) => {
         return res.status(403).json({ error: "🚫 AUDITORÍA: No tienes los permisos requeridos para eliminar archivos de evidencia." });
       }
 
-      // 2. BUSCAR EL REGISTRO: Obtener la ruta del archivo físico antes de borrarlo de la BD
-      // Nota: Reemplaza 'taskEvidence' por el nombre exacto de tu modelo en Prisma si cambia (ej: 'evidence' o 'attachment')
-      const evidence = await prisma.taskEvidence.findUnique({
+      // 2. BUSCAR EL REGISTRO: Corrección al modelo correcto 'attachment'
+      const evidence = await prisma.attachment.findUnique({
         where: { id: evidenceId }
       });
 
@@ -491,24 +613,40 @@ deleteEvidence: async (req, res) => {
         return res.status(404).json({ error: "La evidencia ya no existe o ya fue eliminada." });
       }
 
-      // 3. ELIMINACIÓN FÍSICA: Borrar el archivo del disco del servidor
+      // 3. ELIMINACIÓN FÍSICA: Ajuste de ruta para coincidir con tu camuflaje
       if (evidence.filepath) {
-        // Reconstruimos la ruta absoluta hacia tu carpeta de subidas (ej: 'backend/uploads/...')
-        const absolutePath = path.join(__dirname, '..', evidence.filepath);
+        // Extraemos solo el nombre real del archivo guardado en disco
+        const actualFileName = evidence.filepath.replace('/api/uploads/', '');
+        // Construimos la ruta absoluta hacia tu carpeta 'uploads' física
+        const absolutePath = path.join(__dirname, '../uploads', actualFileName);
         
         if (fs.existsSync(absolutePath)) {
           fs.unlinkSync(absolutePath); // Elimina el archivo físico de forma síncrona y segura
+          console.log(`🗑️ [Storage] Archivo físico eliminado: ${actualFileName}`);
+        } else {
+          console.warn(`⚠️ [Storage] Archivo no encontrado en disco, pero se procederá con la eliminación lógica: ${absolutePath}`);
         }
       }
 
-      // 4. ELIMINACIÓN LÓGICA: Limpiar el registro de la Base de Datos
-      await prisma.taskEvidence.delete({
+      // 4. ELIMINACIÓN LÓGICA: Borrar el registro de la Base de Datos
+      await prisma.attachment.delete({
         where: { id: evidenceId }
+      });
+
+      // 5. REGISTRO EN AUDITORÍA (Opcional pero altamente recomendado)
+      // Dejamos rastro de quién eliminó el archivo para mantener la trazabilidad
+      await prisma.auditLog.create({
+        data: {
+          task_id: evidence.task_id,
+          user_id: user.id,
+          action: "EVIDENCIA ELIMINADA",
+          details: `Se eliminó permanentemente el archivo adjunto: ${evidence.filename}`
+        }
       });
 
       res.json({ message: "Evidencia y archivo físico eliminados con éxito." });
     } catch (error) {
-      console.error("Error al eliminar evidencia:", error);
+      console.error("❌ Error al eliminar evidencia:", error);
       res.status(500).json({ error: "Error interno del servidor al procesar la eliminación." });
     }
   }

@@ -1,24 +1,20 @@
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
-const notificationService = require('./controllers/notificationService'); 
+// CÁMBIALO A ESTO:
+const notificationService = require('./controllers/notificationService'); // Ajusta la ruta si es necesario
 const prisma = new PrismaClient();
 
 const startCronJobs = () => {
   console.log("⏳ Motor de Alertas activado. Esperando el cambio de minuto...");
   
-  // Ejecutar CADA MINUTO para pruebas
   cron.schedule('* * * * *', async () => {
     console.log("\n--------------------------------------------------");
     console.log("🔍 [CRON] Iniciando validación de tareas...");
     
-    // Calcular fechas locales
+    // --- NUEVA LÓGICA DE FECHAS NATURA ---
     const today = new Date();
-    const todayStr = today.toLocaleDateString('en-CA'); // Formato YYYY-MM-DD
+    today.setHours(0, 0, 0, 0); // Normalizamos a la medianoche (00:00:00) para evitar desfases de horas
     
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toLocaleDateString('en-CA');
-
     try {
       const allUsers = await prisma.user.findMany();
       const activeTasks = await prisma.task.findMany({
@@ -27,31 +23,73 @@ const startCronJobs = () => {
         }
       });
 
-      console.log(`📊 Tareas activas en BD: ${activeTasks.length}`);
+/*       console.log(`📊 Tareas activas en BD: ${activeTasks.length}`);
       let atrasadas = 0;
 
       for (const task of activeTasks) {
         const responsablesArray = task.responsable ? task.responsable.split(',').map(r => r.trim()) : [];
         
-        // --- LÓGICA TAREAS ATRASADAS ---
-        if (task.fecha_fin < todayStr) {
+        // Convertimos la fecha de la base de datos a un objeto Date real para compararlo
+        const fechaFinTarea = task.fecha_fin ? new Date(task.fecha_fin) : null;
+
+        // --- VALIDACIÓN MATEMÁTICA REAL ---
+        if (fechaFinTarea && fechaFinTarea < today) {
           atrasadas++;
+          
           const notifiedToday = await prisma.notification.findFirst({
             where: { 
               task_id: task.id, 
               type: 'CRITICAL', 
-              created_at: { gte: new Date(new Date().setHours(0,0,0,0)) } 
+              created_at: { gte: today } // Comparamos desde el inicio del día de hoy
             }
           });
 
           if (!notifiedToday) {
+            // Formateamos visualmente para el correo
+            const fechaLimpia = fechaFinTarea.toISOString().split('T')[0];
             console.log(`🚨 Tarea atrasada detectada: "${task.actividad}"`);
-            await notifyResponsibles(task, responsablesArray, allUsers, 'CRITICAL', `🚨 URGENTE: La actividad "${task.actividad}" está ATRASADA (Debió finalizar el ${task.fecha_fin}).`);
+            
+            await notifyResponsibles(task, responsablesArray, allUsers, 'CRITICAL', `🚨 URGENTE: La actividad "${task.actividad}" está ATRASADA (Debió finalizar el ${fechaLimpia}).`);
           } else {
             console.log(`ℹ️ La tarea "${task.actividad}" está atrasada, pero ya se avisó hoy.`);
           }
         }
+      } */
+	  
+	  
+	  
+	  console.log(`📊 Tareas activas en BD: ${activeTasks.length}`);
+      let atrasadas = 0;
+
+      for (const task of activeTasks) {
+        const responsablesArray = task.responsable ? task.responsable.split(',').map(r => r.trim()) : [];
+        const fechaFinTarea = task.fecha_fin ? new Date(task.fecha_fin) : null;
+
+        // 🟢 EL RADAR: Imprimimos exactamente qué está comparando Node.js
+        const fechaCorta = fechaFinTarea ? fechaFinTarea.toISOString().split('T')[0] : 'Sin fecha';
+        console.log(`🔎 Evaluando: "${task.actividad.substring(0, 20)}..." | Estado: ${task.estado} | Vence: ${fechaCorta}`);
+
+        if (fechaFinTarea && fechaFinTarea < today) {
+          atrasadas++;
+          
+          const notifiedToday = await prisma.notification.findFirst({
+            where: { 
+              task_id: task.id, 
+              type: 'CRITICAL', 
+              created_at: { gte: today } 
+            }
+          });
+
+          if (!notifiedToday) {
+            console.log(`   🚨 ATRASADA DETECTADA. Enviando alerta a responsables...`);
+            const fechaLimpia = fechaFinTarea.toISOString().split('T')[0];
+            await notifyResponsibles(task, responsablesArray, allUsers, 'CRITICAL', `🚨 URGENTE: La actividad "${task.actividad}" está ATRASADA (Debió finalizar el ${fechaLimpia}).`);
+          } else {
+            console.log(`   🚫 BLOQUEO ANTI-SPAM: La tarea está atrasada, pero ya se envió la alerta hoy.`);
+          }
+        }
       }
+	  
       
       console.log(`✅ [CRON] Fin de validación. Tareas Atrasadas: ${atrasadas}`);
       console.log("--------------------------------------------------\n");

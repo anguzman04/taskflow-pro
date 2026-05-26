@@ -87,10 +87,10 @@ model Task {
   id                Int          @id @default(autoincrement())
   actividad         String
   responsable       String
-  fecha_registro    String
-  fecha_inicio      String
-  fecha_fin         String
-  fecha_ejecucion   String?
+  fecha_registro    DateTime @default(now())
+  fecha_inicio      DateTime
+  fecha_fin         DateTime
+  fecha_ejecucion   DateTime?
   prioridad         String
   prerequisito      String?
   observacion       String?
@@ -182,8 +182,8 @@ model Project {
   nombre       String
   descripcion  String?
   estado       String   @default("Activo")
-  fecha_inicio String?
-  fecha_fin    String?
+  fecha_inicio DateTime?
+  fecha_fin    DateTime?
   lider_id     Int?
   
   // --- NUEVO CAMPO ---
