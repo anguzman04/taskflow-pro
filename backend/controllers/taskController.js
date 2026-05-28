@@ -523,13 +523,26 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
       }));
 
       // 5. Ejecutar la búsqueda delegando el 100% del esfuerzo a PostgreSQL
-      const controlTasks = await prisma.task.findMany({ 
+      /* const controlTasks = await prisma.task.findMany({ 
         where: { OR: orConditions },
         orderBy: { id: 'desc' },
         include: { subtasks: true }
       });
 
-      res.json(controlTasks);
+      res.json(controlTasks); */
+	  
+	  // Formateamos las fechas para que el módulo de Control de Gestión las vea limpias
+      const formattedControlTasks = controlTasks.map(task => ({
+        ...task,
+        fecha_registro: task.fecha_registro ? new Date(task.fecha_registro).toISOString().split('T')[0] : '',
+        fecha_inicio: task.fecha_inicio ? new Date(task.fecha_inicio).toISOString().split('T')[0] : '',
+        fecha_fin: task.fecha_fin ? new Date(task.fecha_fin).toISOString().split('T')[0] : ''
+      }));
+
+      res.json(formattedControlTasks);
+	  
+	  
+	  
     } catch (error) {
       console.error("❌ Error en getControlTasks optimizado:", error);
       res.status(500).json([]);

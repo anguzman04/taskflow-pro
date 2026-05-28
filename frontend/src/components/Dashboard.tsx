@@ -96,7 +96,7 @@ const getProgressTextColor = (percent: number) => {
   return 'text-emerald-600';
 };
 
-const getDaysOverdue = (endDateStr: string, status: string) => {
+/* const getDaysOverdue = (endDateStr: string, status: string) => {
   try {
     if (!endDateStr || typeof endDateStr !== 'string' || status === 'Completado' || status === 'Finalizado' || status === 'Cancelado') return 0; 
     const parts = endDateStr.split('-');
@@ -111,7 +111,31 @@ const getDaysOverdue = (endDateStr: string, status: string) => {
     }
     return 0;
   } catch (e) { return 0; }
+}; */
+
+const getDaysOverdue = (endDateStr: string, status: string) => {
+  try {
+    if (!endDateStr || typeof endDateStr !== 'string' || status === 'Completado' || status === 'Finalizado' || status === 'Cancelado') return 0;
+    
+    // 🚀 CORRECCIÓN: Decapitar la Zona Horaria antes de hacer el split
+    const fechaLimpia = endDateStr.split('T')[0]; 
+    const parts = fechaLimpia.split('-');
+    
+    if (parts.length !== 3) return 0;
+    const [year, month, day] = parts.map(Number);
+    const end = new Date(year, month - 1, day);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (today > end) {
+      const diffTime = today.getTime() - end.getTime();
+      return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    }
+    return 0;
+  } catch (e) { return 0; }
 };
+
+
 
 const ChartsSection = ({ data }: { data: any[] }) => {
   const pieData = [
@@ -242,7 +266,11 @@ export default function App() {
   const [selectedAreas, setSelectedAreas] = useState<number[]>([]);
   const [accesoSupervision, setAccesoSupervision] = useState(false);
   const [controlAreaId, setControlAreaId] = useState<number | null>(null);
+  //const [controlTasks, setControlTasks] = useState<any[]>([]);
+  
+  const [controlResponsableFilter, setControlResponsableFilter] = useState<string>('All'); 
   const [controlTasks, setControlTasks] = useState<any[]>([]);
+  
   
   const [expandedAreas, setExpandedAreas] = useState<Set<number>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<number>>(new Set()); 
@@ -384,7 +412,7 @@ export default function App() {
       return (b.id || 0) - (a.id || 0);
   });
 
-  const filteredControlTasks = controlTasks.filter(task => {
+/*   const filteredControlTasks = controlTasks.filter(task => {
     if (!task) return false;
     const act = task.actividad || '';
     const matchesSearch = act.toLowerCase().includes(searchTerm.toLowerCase());
@@ -401,16 +429,100 @@ export default function App() {
       const calA = parseInt(a.calificacion) || 0; const calB = parseInt(b.calificacion) || 0;
       if (calB !== calA) return calB - calA;
       return (b.id || 0) - (a.id || 0);
+  }); */
+  
+const filteredControlTasks = controlTasks.filter(task => {
+    if (!task) return false;
+
+    // 1. Filtro de Búsqueda (Texto)
+    const act = task.actividad || '';
+    const matchesSearch = act.toLowerCase().includes(searchTerm.toLowerCase());
+
+    // 2. Filtro de Estado (¡CORREGIDO PARA ATRASADAS!)
+    let matchesStatus = false;
+    if (statusFilter === 'All') {
+      matchesStatus = true;
+    } else if (statusFilter === 'Atrasadas') {
+      if (!task.fecha_fin) {
+        matchesStatus = false;
+      } else {
+        // Limpiamos la fecha aislando solo el "YYYY-MM-DD"
+        const fechaLimpia = task.fecha_fin.split('T')[0]; 
+        const fechaFinDate = new Date(`${fechaLimpia}T00:00:00`);
+        
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        
+        matchesStatus = (task.estado !== 'Completado' && task.estado !== 'Cancelado') && (fechaFinDate < hoy);
+      }
+    } else {
+      matchesStatus = task.estado === statusFilter;
+    }
+
+    // 3. Filtro por Área (FORZADO EN FRONTEND)
+    let matchesArea = true;
+    if (controlAreaId) {
+      let belongsToArea = false;
+      if (task.area_origen_id === controlAreaId) belongsToArea = true;
+      if (!belongsToArea && task.responsable) {
+        const responsablesArray = String(task.responsable).split(',').map(r => r.trim());
+        for (const respName of responsablesArray) {
+          const normalize = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase() : '';
+          const respUser = allUsers.find(u => normalize(`${u.nombre || ''} ${u.apellido || ''}`) === normalize(respName));
+          if (respUser && respUser.area_id === controlAreaId) {
+            belongsToArea = true; break;
+          }
+        }
+      }
+      matchesArea = belongsToArea;
+    }
+
+    // 4. Filtro por Responsable
+    let matchesResponsable = true;
+    if (controlResponsableFilter !== 'All') {
+      const responsablesArray = task.responsable ? String(task.responsable).split(',').map(r => r.trim()) : [];
+      matchesResponsable = responsablesArray.includes(controlResponsableFilter);
+    }
+
+    // Exigimos que la tarea cumpla TODOS los filtros activos
+    return matchesSearch && matchesStatus && matchesArea && matchesResponsable;
+  }).sort((a, b) => {
+      const ordA = a.orden_ejecucion; const ordB = b.orden_ejecucion;
+      if (ordA != null && ordB != null) return ordA - ordB;
+      if (ordA != null) return -1;
+      if (ordB != null) return 1;
+      const calA = parseInt(a.calificacion) || 0; const calB = parseInt(b.calificacion) || 0;
+      if (calB !== calA) return calB - calA;
+      return (b.id || 0) - (a.id || 0);
   });
 
-  const filteredReportTasks = tasks.filter(task => {
+ /* const filteredReportTasks = tasks.filter(task => {
     let matchArea = true; let matchProject = true; let matchDate = true;
     if (reportAreaFilter !== 'All') matchArea = task.area_origen_id?.toString() === reportAreaFilter;
     if (reportProjectFilter !== 'All') matchProject = task.proyecto_id?.toString() === reportProjectFilter;
     if (reportDateFrom && task.fecha_registro) matchDate = task.fecha_registro >= reportDateFrom;
     if (reportDateTo && task.fecha_registro && matchDate) matchDate = task.fecha_registro <= reportDateTo;
     return matchArea && matchProject && matchDate;
-  });
+  });*/
+
+const filteredReportTasks = tasks.filter(task => {
+  let matchArea = true; let matchProject = true; let matchDate = true;
+  if (reportAreaFilter !== 'All') matchArea = task.area_origen_id?.toString() === reportAreaFilter;
+  if (reportProjectFilter !== 'All') matchProject = task.proyecto_id?.toString() === reportProjectFilter;
+  
+  // 🚀 CORRECCIÓN: Limpiar la fecha de registro antes de comparar
+  if (reportDateFrom || reportDateTo) {
+    const fechaRegLimpia = task.fecha_registro ? task.fecha_registro.split('T')[0] : '';
+    if (reportDateFrom && fechaRegLimpia) matchDate = fechaRegLimpia >= reportDateFrom;
+    if (reportDateTo && fechaRegLimpia && matchDate) matchDate = fechaRegLimpia <= reportDateTo;
+  }
+  
+  return matchArea && matchProject && matchDate;
+});
+
+
+
+
 
   const fetchAreas = async () => {
     try {
@@ -526,14 +638,29 @@ export default function App() {
       return isValidForControl;
     });
     
-    const combinedTasks = [...fetchedTasks];
+/*     const combinedTasks = [...fetchedTasks];
     localControlTasks.forEach(localTask => {
        if (!combinedTasks.find(t => t.id === localTask.id)) {
            combinedTasks.push(localTask);
        }
     });
 
-    setControlTasks(combinedTasks);
+    setControlTasks(combinedTasks); */
+	
+	// 🚀 CORRECCIÓN: Priorizar las tareas de memoria (localControlTasks) que están 
+    // 100% frescas si el usuario acaba de hacer un cambio rápido.
+    const combinedMap = new Map();
+    
+    // 1. Cargamos las tareas del backend de control
+    fetchedTasks.forEach(t => combinedMap.set(t.id, t));
+    
+    // 2. Sobrescribimos/Agregamos las locales (Esto fuerza la sincronización perfecta)
+    localControlTasks.forEach(t => combinedMap.set(t.id, t));
+    
+    setControlTasks(Array.from(combinedMap.values()));
+	
+	
+	
   };
 
   const fetchNotifications = async () => {
@@ -810,8 +937,8 @@ const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     const formData = new FormData(e.currentTarget);
     const fInicio = formData.get('fecha_inicio') as string;
     const fFin = formData.get('fecha_fin') as string;
-    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("⚠️ Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
-
+    //if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("⚠️ Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
+    if (fInicio && fFin && fFin < fInicio) { alert("⚠️ Error: La Fecha de Compromiso no puede ser anterior a la Fecha de Inicio."); return; }
     setIsSubmitting(true);
 
     try {
@@ -849,12 +976,12 @@ const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
           // AQUÍ SE CAPTURA EL MENSAJE DE AUDITORÍA
           const errorData = await res.json(); 
           alert(errorData.error || "Ocurrió un error al guardar la tarea."); 
-      } */
+      } 
 
 
 
 
-/* 
+ 
 
     } catch (err) {
       alert("Error de conexión al servidor al guardar la tarea.");
@@ -862,6 +989,9 @@ const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
       setIsSubmitting(false); 
     }
   }; */
+  
+  
+  
 if (res.ok) { 
           setIsModalOpen(false); 
           fetchTasks(); 
@@ -977,8 +1107,8 @@ const handleDeleteEvidence = async (evidenceId: number) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
     const fInicio = formData.get('fecha_inicio') as string; const fFin = formData.get('fecha_fin') as string;
-    if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("?? Error: La Fecha de Fin Estimada del proyecto no puede ser anterior a la Fecha de Inicio."); return; }
-
+    //if (fInicio && fFin && new Date(fFin) < new Date(fInicio)) { alert("?? Error: La Fecha de Fin Estimada del proyecto no puede ser anterior a la Fecha de Inicio."); return; }
+    if (fInicio && fFin && fFin < fInicio) { alert("⚠️ Error: La Fecha de Fin Estimada del proyecto no puede ser anterior a la Fecha de Inicio."); return; }
     try {
       const projectData = {
         nombre: formData.get('nombre'), descripcion: formData.get('descripcion'), estado: formData.get('estado'), 
@@ -1076,8 +1206,10 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       worksheet.addRow({
         id: task.id, actividad: task.actividad, responsable: task.responsable, area_origen: areaName,
         proyecto: projectName, gerente: task.gerente_responsable || 'Sin Asignar', tipo: task.tipo || '-',
-        estado: task.estado, fechaFin: task.fecha_fin, tematica: task.tematica || '-', prioridad: getPriorityLabel(task.prioridad),
-        avance: `${task.porcentaje_avance}%`, compromiso_semanal: task.compromiso_semanal || '-', dependencia: task.prerequisito || '-',
+        //estado: task.estado, fechaFin: task.fecha_fin, tematica: task.tematica || '-', prioridad: getPriorityLabel(task.prioridad),
+       // Cambia la línea de fechaFin a:
+        estado: task.estado, fechaFin: task.fecha_fin ? String(task.fecha_fin).split('T')[0] : '-', tematica: task.tematica || '-', prioridad: getPriorityLabel(task.prioridad),
+     	avance: `${task.porcentaje_avance}%`, compromiso_semanal: task.compromiso_semanal || '-', dependencia: task.prerequisito || '-',
         inversion: task.requiere_inversion ? 'S  ' : 'No', alineacion: task.alineacion_estrategica || '-', impacto: task.impacto || '-',
         viabilidad: task.viabilidad_tecnica || '-', calificacion: task.calificacion || '-', orden_ejecucion: task.orden_ejecucion || `Sugerido #${idx + 1}`,
         observaciones: task.observacion || '-'
@@ -1248,7 +1380,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       const res = await fetch('/api/tasks/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tasks: rows }) });
       
       if (res.ok) { 
-          alert(`?  xito! Se importaron ${rows.length} tareas correctamente.`); 
+          alert(`Éxito! Se importaron ${rows.length} tareas correctamente.`); 
           await fetchTasks(); 
           await fetchControlTasks(); 
       } 
@@ -1453,13 +1585,28 @@ const renderDynamicCell = (colId: string, task: any, index: number, isControlVie
             {taskProject ? <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 flex items-center gap-1 w-max"><FolderKanban size={10} /> {taskProject.nombre}</span> : <span className="text-xs text-slate-300 italic">-</span>}
           </td>
         );
-      case 'compromiso':
+		
+		
+		
+   /*    case 'compromiso':
         return (
           <td key={`compromiso-${task.id}`} className="px-6 py-4">
             <div className="text-[10px] text-slate-400">{task.fecha_fin}</div>
             {overdueDays > 0 && <span className="mt-1 inline-block text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded uppercase">⏳ {overdueDays} DÍAS</span>}
           </td>
+        ); */
+  
+      case 'compromiso':
+        return (
+          <td key={`compromiso-${task.id}`} className="px-6 py-4">
+            {/* 🚀 CORRECCIÓN: split('T')[0] para que la vista quede limpia */}
+            <div className="text-[10px] text-slate-400">{task.fecha_fin ? String(task.fecha_fin).split('T')[0] : ''}</div>
+            {overdueDays > 0 && <span className="mt-1 inline-block text-[9px] font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded uppercase">⏳ {overdueDays} DÍAS</span>}
+          </td>
         );
+  
+  
+  
   /*     case 'avance':
         return (
           <td key={`avance-${task.id}`} className="px-6 py-4"><div className="flex items-center gap-3"><div className="w-12 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(task.porcentaje_avance)}`} style={{ width: `${task.porcentaje_avance}%` }} /></div><span className={`text-[10px] font-bold ${getProgressTextColor(task.porcentaje_avance)}`}>{task.porcentaje_avance}%</span></div></td>
@@ -1558,7 +1705,7 @@ case 'avance':
 
 
 
-case 'responsable':
+/* case 'responsable':
         return (
           <td key={`responsable-${task.id}`} className="px-6 py-4">
             {isControlView ? (
@@ -1588,7 +1735,67 @@ case 'responsable':
             )}
           </td>
         );
-
+ */
+ 
+ 
+case 'responsable':
+        return (
+          <td key={`responsable-${task.id}`} className="px-6 py-4">
+            {isControlView ? (
+              <div className="flex items-center gap-3">
+                {/* Avatar del Responsable Principal */}
+                <div className="w-8 h-8 bg-slate-100 text-slate-500 rounded-full flex items-center justify-center text-xs font-bold uppercase shrink-0 shadow-sm border border-white">
+                  {String(responsablesArray[0] || 'U').charAt(0)}
+                </div>
+                
+                <div>
+                  {/* Nombre del Responsable Principal */}
+                  <span className="text-xs font-bold text-slate-700 block whitespace-nowrap">
+                    {responsablesArray[0]}
+                  </span>
+                  
+                  {/* Contenedor de Badges (Área + Contador de extras) */}
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase inline-block border border-blue-100/50">
+                      {(() => {
+                        const respUser = allUsers.find(u => `${u.nombre || ''} ${u.apellido || ''}`.trim() === responsablesArray[0]);
+                        const area = areas.find(a => a.id === respUser?.area_id);
+                        return area ? area.nombre : 'Sin Área';
+                      })()}
+                    </span>
+                    
+                    {/* Badge de "+X más" (Solo aparece si hay múltiples responsables) */}
+                    {responsablesArray.length > 1 && (
+                      <span 
+                        className="text-[9px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full uppercase cursor-help border border-slate-200"
+                        title={`También responsables:\n${responsablesArray.slice(1).join('\n')}`}
+                      >
+                        +{responsablesArray.length - 1} más
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Vista estándar: Avatares apilados horizontalmente */
+              <div className="flex -space-x-2 pl-1" title={String(task.responsable)}>
+                {responsablesArray.slice(0, 3).map((resp, idx) => (
+                  <div 
+                    key={idx} 
+                    className="h-8 w-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-[10px] uppercase border border-white shadow-sm"
+                  >
+                    {String(resp).charAt(0)}
+                  </div>
+                ))}
+                {responsablesArray.length > 3 && (
+                  <div className="h-8 w-8 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] border border-white shadow-sm">
+                    +{responsablesArray.length - 3}
+                  </div>
+                )}
+              </div>
+            )}
+          </td>
+        );
 
 
 
@@ -2093,22 +2300,37 @@ case 'responsable':
                   </div>
                 </div>
 
-                <div className="flex gap-4 mt-6 pt-6 border-t border-slate-100">
+   
+			  
+			  <div className="flex flex-col md:flex-row gap-4 mt-6 pt-6 border-t border-slate-100">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input type="text" placeholder="Buscar actividad en supervisi  n..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                    <input type="text" placeholder="Buscar actividad en supervisión..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                   </div>
-                  <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  
+                  {/* --- NUEVO FILTRO POR RESPONSABLE --- */}
+                  <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-full md:w-56" value={controlResponsableFilter} onChange={(e) => setControlResponsableFilter(e.target.value)}>
+                    <option value="All">Todos los Responsables</option>
+                    {Array.from(new Set(controlTasks.flatMap(t => t.responsable ? String(t.responsable).split(',').map(r => r.trim()) : []))).filter(Boolean).sort().map(resp => (
+                       <option key={resp} value={resp}>{resp}</option>
+                    ))}
+                  </select>
+
+                  <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-full md:w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                     <option value="All">Todos los Estados</option>
                     <option value="Planeado">Planeado</option>
                     <option value="En curso">En curso</option>
                     <option value="En espera">En espera</option>
-                    <option value="Atrasadas">Atrasadas ??</option>
+                    <option value="Atrasadas">Atrasadas 🚨</option>
                     <option value="Completado">Completado</option>
                   </select>
                 </div>
-              </div>
-              
+             </div>
+			  
+			  
+			  
+			  
+			  
               <ChartsSection data={filteredControlTasks} />
               
               <div className="flex justify-end mb-4 relative z-20">
