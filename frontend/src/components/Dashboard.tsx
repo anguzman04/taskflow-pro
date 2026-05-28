@@ -1097,6 +1097,29 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       alert("Error de conexión al servidor al intentar eliminar la evidencia.");
     }
   };
+  
+  
+  // 🚀 NUEVA FUNCIÓN: Borrado exclusivo desde Control de Gestión
+  const handleDeleteControlTask = async (taskId: number) => {
+    if (!window.confirm("⚠️ ¿Estás seguro de que deseas eliminar esta tarea desde el Control de Gestión? Esta acción la ocultará de los tableros.")) return;
+
+    try {
+      const res = await fetch(`/api/control/tasks/${taskId}/delete`, {
+        method: 'PATCH'
+      });
+
+      if (res.ok) {
+        // Refresco de tablas para desaparecer el registro
+        fetchControlTasks();
+        fetchTasks();
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Ocurrió un error al intentar eliminar la tarea.");
+      }
+    } catch (err) {
+      alert("Error de conexión al servidor.");
+    }
+  };
 
 
 
@@ -1159,6 +1182,10 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         perm_reports_view: formData.get('perm_reports_view') === 'on' ? 1 : 0,
         // FIX 2: Agregamos el nuevo permiso para edici  n en Control de Gesti  n
         perm_control_edit: formData.get('perm_control_edit') === 'on' ? 1 : 0,
+		
+		perm_control_delete: formData.get('perm_control_delete') === 'on' ? 1 : 0,
+        can_download_evidence: formData.get('can_download_evidence') === 'on' ? true : false,
+		
         can_download_evidence: formData.get('can_download_evidence') === 'on' ? true : false,
         can_delete_evidence: formData.get('can_delete_evidence') === 'on' ? true : false,
         perm_subtasks_view: formData.get('perm_subtasks_view') === 'on' ? 1 : 0, perm_subtasks_create: formData.get('perm_subtasks_create') === 'on' ? 1 : 0,
@@ -1180,6 +1207,11 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       } else { const data = await res.json(); alert(data.error || "Ocurri   un error."); }
     } catch (err) {}
   };
+  
+  
+  
+  
+  
 
   const exportToExcelData = async (tasksToExport: any[], filenamePrefix: string) => {
     if (tasksToExport.length === 0) return alert("No hay datos para exportar.");
@@ -1821,7 +1853,7 @@ case 'responsable':
                   {canEditTask ? <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea"><Edit2 size={16} /></button> : (currentUser?.can_edit_tasks && isTaskLocked) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
                   {canDeleteTask ? <button onClick={() => handleDelete(task.id!, 'tasks')} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar Tarea"><Trash2 size={16} /></button> : (currentUser?.can_delete_tasks && isTaskActive) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
                 </>
-              ) : (
+/*               ) : (
                 (currentUser?.is_admin || (currentUser as any)?.perm_control_edit) && (
                   <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea desde Control"><Edit2 size={16} /></button>
                 )
@@ -1829,7 +1861,28 @@ case 'responsable':
             </div>
           </td>
         );
+      default: return null; */
+	  // ... código previo (línea 1374 aprox)
+              ) : (
+                <>
+                  {(currentUser?.is_admin || (currentUser as any)?.perm_control_edit) && (
+                    <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea desde Control"><Edit2 size={16} /></button>
+                  )}
+                  {/* 🚀 NUEVO: Botón de eliminar con doble validación de permisos */}
+                  {(currentUser?.is_admin || (currentUser as any)?.perm_control_delete) && (
+                    <button onClick={() => handleDeleteControlTask(task.id!)} className="text-slate-400 hover:text-red-600 transition-colors ml-2" title="Eliminar Tarea del Tablero">
+                      <Trash2 size={16} />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          </td>
+        );
       default: return null;
+	  
+	  
+	  
     }
   };
 
@@ -2217,7 +2270,7 @@ case 'responsable':
                             <div>
                               <div className="flex items-center gap-2"><h3 className="font-bold text-slate-900 text-lg">{project.nombre}</h3>{project.prioritario && <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded uppercase tracking-tighter">?? Prioritario</span>}{projectOverdueDays > 0 && <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-tighter">?? Atrasado</span>}</div>
                               <p className="text-xs text-slate-500 line-clamp-1">{project.descripcion || 'Sin descripci  n'}</p>
-                              <div className="flex items-center gap-1 mt-1 text-[10px] font-bold text-slate-400 uppercase"><UserIcon size={10} /> L  der: <span className="text-indigo-500">{liderName}</span></div>
+                              <div className="flex items-center gap-1 mt-1 text-[10px] font-bold text-slate-400 uppercase"><UserIcon size={10} /> Líder: <span className="text-indigo-500">{liderName}</span></div>
                             </div>
                           </div>
                           <div className="flex items-center gap-8">
@@ -2672,10 +2725,18 @@ case 'responsable':
                          
                          {/* FIX 2: Checkbox para habilitar edici  n en Control de Gestión */}
                          {accesoSupervision && (
+						 <>
                            <label className="flex items-center gap-3 cursor-pointer mt-2 pl-8">
                              <input type="checkbox" name="perm_control_edit" defaultChecked={editingItem?.perm_control_edit} className="w-5 h-5 text-indigo-600 rounded border-indigo-300" />
                              <span className="text-sm font-bold text-indigo-700">Permitir EDITAR tareas desde la vista de Control de Gestión</span>
                            </label>
+						   
+					         {/* 🚀 NUEVO: Checkbox para habilitar eliminación en Control de Gestión */}
+                             <label className="flex items-center gap-3 cursor-pointer mt-2 pl-8">
+                               <input type="checkbox" name="perm_control_delete" defaultChecked={editingItem?.perm_control_delete} className="w-5 h-5 text-red-600 rounded border-red-300" />
+                               <span className="text-sm font-bold text-red-700">Permitir ELIMINAR tareas desde la vista de Control de Gestión</span>
+                             </label>
+                           </>
                          )}
 
 <label className="flex items-center gap-3 cursor-pointer mt-2 pl-8">

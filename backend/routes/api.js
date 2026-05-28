@@ -61,7 +61,7 @@ router.delete('/areas/:id', areaController.delete);
 // Tareas
 router.get('/tasks', taskController.getAll);
 router.post('/tasks', taskController.create);
-router.post('/tasks/bulk', taskController.createBulk); // 👈 ¡AQUÍ ESTÁ LA NUEVA RUTA MASIVA!
+router.post('/tasks/bulk', taskController.createBulk);
 router.put('/tasks/:id', taskController.update);   
 router.delete('/tasks/:id', taskController.delete); 
 // Ruta para edición rápida (inline)
@@ -80,16 +80,16 @@ router.delete('/projects/:id', projectController.delete);
 
 // Control de Gestión
 router.get('/control/tasks', taskController.getControlTasks);
+router.patch('/control/tasks/:id/delete', taskController.eliminarTareaDesdeControl); // 👈 Limpia y protegida
 
 // Comentarios
 router.get('/comments/:taskId', commentController.getByTask);
 router.post('/comments', commentController.create);
-// 👇 AÑADE ESTAS DOS RUTAS NUEVAS
 router.put('/comments/:id', commentController.update);
 router.delete('/comments/:id', commentController.delete);
-// Ruta para eliminar una evidencia específica verificando el ID
-router.delete('/tasks/evidence/:id', taskController.deleteEvidence);
 
+// Evidencias
+router.delete('/tasks/evidence/:id', taskController.deleteEvidence);
 
 // Notificaciones
 router.get('/notifications', notificationController.getByUser);

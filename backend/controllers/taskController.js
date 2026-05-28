@@ -600,7 +600,6 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
   
   
   
-
 deleteEvidence: async (req, res) => {
     const fs = require('fs');
     const path = require('path');
@@ -662,11 +661,50 @@ deleteEvidence: async (req, res) => {
       console.error("❌ Error al eliminar evidencia:", error);
       res.status(500).json({ error: "Error interno del servidor al procesar la eliminación." });
     }
+  }, // 👈 FIX 1: Cambiamos el ';' por ',' porque seguimos dentro del objeto taskController
+
+// --- NUEVA FUNCIÓN: BORRADO LÓGICO DESDE CONTROL DE GESTIÓN ---
+  eliminarTareaDesdeControl: async (req, res) => {
+      try {
+          const taskId = parseInt(req.params.id);
+          
+          // 1. Buscamos el usuario en la BD usando req.userId (como lo hace tu middleware)
+          const user = await prisma.user.findUnique({ where: { id: req.userId } });
+          
+          if (!user) return res.status(404).json({ error: "Usuario no encontrado" });
+
+          // 2. Validación de seguridad
+          if (!user.is_admin && user.perm_control_delete !== 1) {
+              return res.status(403).json({ 
+                  error: 'Acceso denegado. No tienes permisos para eliminar tareas en Control de Gestión.' 
+              });
+          }
+
+          // 3. Borrado lógico
+          const tareaEliminada = await prisma.task.update({
+              where: { id: taskId },
+              data: { estado: 'Cancelado' }
+          });
+
+          // 4. Registro en auditoría
+          await prisma.auditLog.create({
+              data: {
+                  task_id: taskId,
+                  user_id: user.id,
+                  action: "TAREA ELIMINADA DESDE CONTROL",
+                  details: `El usuario removió la tarea del tablero de Control de Gestión.`
+              }
+          });
+
+          res.status(200).json({ message: 'Tarea removida con éxito.', task: tareaEliminada });
+
+      } catch (error) {
+          console.error("❌ Error en BD al eliminar desde control:", error);
+          if (error.code === 'P2025') return res.status(404).json({ error: 'La tarea no existe.' });
+          res.status(500).json({ error: 'Error interno del servidor.' });
+      }
   }
 
-
-
-
-};
+}; // 👈 Esto cierra el objeto taskController
 
 module.exports = taskController;
