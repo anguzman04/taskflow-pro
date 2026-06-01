@@ -325,7 +325,7 @@ export default function App() {
   useEffect(() => {
     let timeoutId: NodeJS.Timeout;
     const logoutUser = () => {
-      alert("Tu sesi  n ha expirado por inactividad. Por seguridad, debes iniciar sesi  n nuevamente.");
+      alert("Tu sesión ha expirado por inactividad. Por seguridad, debes iniciar sesi  n nuevamente.");
       handleLogout();
     };
     const resetTimer = () => { clearTimeout(timeoutId); timeoutId = setTimeout(logoutUser, 900000); };
@@ -595,7 +595,7 @@ const filteredReportTasks = tasks.filter(task => {
           fetchedTasks = Array.isArray(data) ? data : (data?.data || data?.tasks || []);
       }
     } catch (err) {
-       console.warn("La ruta de control en el backend fall  , activando motor de respaldo local...");
+       console.warn("La ruta de control en el backend falló, activando motor de respaldo local...");
     }
 
     let areasAutorizadas: number[] = [];
@@ -742,7 +742,7 @@ const filteredReportTasks = tasks.filter(task => {
       if (taskToOpen) {
         setSelectedTask(taskToOpen); setDetailsTab('comments'); setIsDetailsModalOpen(true);
         fetchTaskDetails(taskToOpen.id!); setShowNotifications(false); 
-      } else alert(`La tarea #${targetTaskId} no se encontr   en tu vista actual.`);
+      } else alert(`La tarea #${targetTaskId} no se encontró en tu vista actual.`);
     }
   };
 
@@ -884,7 +884,7 @@ const handleUpdateComment = async (commentId: number) => {
     try {
         const res = await fetch(`/api/tasks/${taskId}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...task, estado: newStatus }) });
         if (res.ok) fetchTasks(); else { const errorData = await res.json(); alert(errorData.error || "Error al mover la tarea."); }
-    } catch (err) { alert("Error de conexi  n al mover la tarea."); }
+    } catch (err) { alert("Error de conexión al mover la tarea."); }
   };
 
   const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); };
@@ -1101,7 +1101,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
   
   // 🚀 NUEVA FUNCIÓN: Borrado exclusivo desde Control de Gestión
   const handleDeleteControlTask = async (taskId: number) => {
-    if (!window.confirm("⚠️ ¿Estás seguro de que deseas eliminar esta tarea desde el Control de Gestión? Esta acción la ocultará de los tableros.")) return;
+    if (!window.confirm("⚠️ ¿Estás seguro de que deseas eliminar esta tarea desde el Control de Gestión. Esta acción la ocultará de los tableros.")) return;
 
     try {
       const res = await fetch(`/api/control/tasks/${taskId}/delete`, {
@@ -1220,13 +1220,13 @@ const handleDeleteEvidence = async (evidenceId: number) => {
 
     worksheet.columns = [
       { header: 'ID', key: 'id', width: 8 }, { header: 'Actividad', key: 'actividad', width: 45 },
-      { header: 'Ejecutores (Responsables)', key: 'responsable', width: 35 }, { header: '  rea / Origen', key: 'area_origen', width: 25 },
+      { header: 'Ejecutores (Responsables)', key: 'responsable', width: 35 }, { header: '  Área / Origen', key: 'area_origen', width: 25 },
       { header: 'Proyecto / Iniciativa', key: 'proyecto', width: 25 }, { header: 'Gerente/Jefe Responsable', key: 'gerente', width: 25 },
       { header: 'Tipo', key: 'tipo', width: 20 }, { header: 'Estado', key: 'estado', width: 15 },
       { header: 'Fecha de Compromiso', key: 'fechaFin', width: 18 }, { header: 'Tematica', key: 'tematica', width: 25 },
       { header: 'Prioridad', key: 'prioridad', width: 15 }, { header: '% actual', key: 'avance', width: 12 },
       { header: 'Compromiso semanal', key: 'compromiso_semanal', width: 45 }, { header: 'Dependencia', key: 'dependencia', width: 25 },
-      { header: 'Requiere Inversi  n', key: 'inversion', width: 18 }, { header: 'Alineaci  n estrategica', key: 'alineacion', width: 35 },
+      { header: 'Requiere Inversión', key: 'inversion', width: 18 }, { header: 'Alineación estrategica', key: 'alineacion', width: 35 },
       { header: 'Impacto financiero / Operativo', key: 'impacto', width: 25 }, { header: 'Viabilidad Tecnica', key: 'viabilidad', width: 25 },
       { header: 'Calificacion', key: 'calificacion', width: 15 }, { header: 'Orden Sugerido/Manual', key: 'orden_ejecucion', width: 25 }, 
       { header: 'Observaciones', key: 'observaciones', width: 60 }
@@ -1234,7 +1234,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
 
     tasksToExport.forEach((task, idx) => {
       const projectName = projects.find(p => p.id === task.proyecto_id)?.nombre || 'Sin Proyecto';
-      const areaName = areas.find(a => a.id === task.area_origen_id)?.nombre || 'Sin   rea';
+      const areaName = areas.find(a => a.id === task.area_origen_id)?.nombre || 'Sin Área';
       worksheet.addRow({
         id: task.id, actividad: task.actividad, responsable: task.responsable, area_origen: areaName,
         proyecto: projectName, gerente: task.gerente_responsable || 'Sin Asignar', tipo: task.tipo || '-',
@@ -1271,24 +1271,24 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       { header: 'Ignorar', key: 'ignore1', width: 10 }, 
       { header: 'Actividad (*Obligatorio)', key: 'actividad', width: 40 },
       { header: 'Responsable', key: 'responsable', width: 30 }, 
-      { header: '  rea Origen', key: 'area', width: 20 },
+      { header: 'Área Origen', key: 'area', width: 20 },
       { header: 'Proyecto', key: 'proyecto', width: 20 }, 
       { header: 'Gerente Responsable', key: 'gerente', width: 20 },
       { header: 'Tipo', key: 'tipo', width: 15 }, 
       { header: 'Estado', key: 'estado', width: 15 },
       { header: 'Fecha Inicio (YYYY-MM-DD)', key: 'fecha_inicio', width: 20 }, 
       { header: 'Fecha Fin Estimada (YYYY-MM-DD)', key: 'fecha_fin', width: 20 }, 
-      { header: 'Tem  tica', key: 'tematica', width: 20 },
+      { header: 'Temática', key: 'tematica', width: 20 },
       { header: 'Prioridad', key: 'prioridad', width: 15 }, 
       { header: '% Avance', key: 'avance', width: 15 },
       { header: 'Compromiso Semanal', key: 'compromiso', width: 30 }, 
       { header: 'Dependencia (Prerequisito)', key: 'prerequisito', width: 20 },
-      { header: 'Requiere Inversi  n (S  /No)', key: 'inversion', width: 20 }, 
-      { header: 'Alineaci  n Estrat  gica', key: 'alineacion', width: 30 },
+      { header: 'Requiere Inversión (S  /No)', key: 'inversion', width: 20 }, 
+      { header: 'Alineación Estratégica', key: 'alineacion', width: 30 },
       { header: 'Impacto', key: 'impacto', width: 20 }, 
-      { header: 'Viabilidad T  cnica', key: 'viabilidad', width: 20 },
+      { header: 'Viabilidad Técnica', key: 'viabilidad', width: 20 },
       { header: 'Ignorar', key: 'ignore20', width: 10 }, 
-      { header: 'Observaci  n', key: 'observacion', width: 40 }
+      { header: 'Observación', key: 'observacion', width: 40 }
     ];
 
     const headerRow = worksheet.getRow(1);
@@ -1296,7 +1296,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
 
     worksheet.addRow({
       ignore1: '', actividad: 'EJEMPLO DE TAREA NUEVA', responsable: 'Nombre Apellido',
-      area: 'Sistemas', proyecto: 'Migraci  n Nube', gerente: 'Jefe Sistemas',
+      area: 'Sistemas', proyecto: 'Migración Nube', gerente: 'Jefe Sistemas',
       tipo: 'Soporte', estado: 'Planeado', 
       fecha_inicio: '2026-04-01', 
       fecha_fin: '2026-12-31', 
@@ -1518,7 +1518,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-             <div className="flex items-center gap-2 mb-6"><BarChart3 size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Volumen de Tareas por   rea</span></div>
+             <div className="flex items-center gap-2 mb-6"><BarChart3 size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Volumen de Tareas por Área</span></div>
              <div className="h-80">
                {tasksByArea.length > 0 ? (
                  <ResponsiveContainer width="100%" height="100%">
@@ -2507,7 +2507,7 @@ case 'responsable':
                 {(currentView === 'tasks' || currentView === 'control') && (
                   <div className="space-y-6">
                     <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">1. Identificaci  n B  sica</h4>
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">1. Identificación Básica</h4>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase">Actividad</label>
                         <input name="actividad" required defaultValue={editingItem?.actividad} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
@@ -2521,9 +2521,9 @@ case 'responsable':
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">  rea / Origen</label>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">  área / Origen</label>
                           <select name="area_origen_id" defaultValue={editingItem?.area_origen_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
-                            <option value="">Selecciona un   rea</option>
+                            <option value="">Selecciona un área</option>
                             {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                           </select>
                         </div>
@@ -2534,14 +2534,14 @@ case 'responsable':
                           <input name="tipo" placeholder="Ej: Mejora, Soporte, Desarrollo..." defaultValue={editingItem?.tipo} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-400 uppercase">Tem  tica</label>
-                          <input name="tematica" placeholder="Ej: Facturaci  n Electr  nica" defaultValue={editingItem?.tematica} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Temática</label>
+                          <input name="tematica" placeholder="Ej: Facturación Electrónica" defaultValue={editingItem?.tematica} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
                         </div>
                       </div>
                     </div>
 
                     <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">2. Asignaci  n y Tiempos</h4>
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">2. Asignación y Tiempos</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Gerente / Jefe Responsable</label>
@@ -2598,18 +2598,18 @@ case 'responsable':
                       <h4 className="text-xs font-black text-indigo-800 uppercase tracking-widest mb-2 border-b border-indigo-200 pb-2">3. M  tricas y Evaluaci  n (Matriz)</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Alineaci  n Estrat  gica</label>
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Alineación Estratégica</label>
                           <select name="alineacion_estrategica" defaultValue={editingItem?.alineacion_estrategica || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
-                            <option value="">Seleccione una opci  n</option>
+                            <option value="">Seleccione una opción</option>
                             <option value="WIG 1 Crecimiento de Ingresos">WIG 1 Crecimiento de Ingresos</option>
-                            <option value="WIG 2 Reducci  n y control del costo">WIG 2 Reducci  n y control del costo</option>
-                            <option value="WIG 3 Satisfacci  n del cliente">WIG 3 Satisfacci  n del cliente</option>
+                            <option value="WIG 2 Reducci  n y control del costo">WIG 2 Reducción y control del costo</option>
+                            <option value="WIG 3 Satisfacci  n del cliente">WIG 3 Satisfacción del cliente</option>
                           </select>
                         </div>
                         <div className="space-y-1 flex flex-col justify-end">
                            <label className="flex items-center gap-3 p-2 bg-white rounded-xl border border-indigo-200 cursor-pointer hover:bg-indigo-100 transition-colors h-[38px]">
                              <input type="checkbox" name="requiere_inversion" defaultChecked={editingItem?.requiere_inversion} className="w-4 h-4 text-indigo-600 rounded border-indigo-300" />
-                             <span className="text-sm font-bold text-indigo-900">Requiere Inversi  n Econ  mica</span>
+                             <span className="text-sm font-bold text-indigo-900">Requiere Inversión Económica</span>
                            </label>
                         </div>
                       </div>
@@ -2617,29 +2617,29 @@ case 'responsable':
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-indigo-600 uppercase">Impacto Financiero/Operativo</label>
                           <select name="impacto" defaultValue={editingItem?.impacto || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
-                            <option value="">Seleccione una opci  n</option>
+                            <option value="">Seleccione una opción</option>
                             <option value="1. Bajo">1. Bajo</option>
                             <option value="2. Medio">2. Medio</option>
                             <option value="3. Alto">3. Alto</option>
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Viabilidad T  cnica</label>
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Viabilidad Técnica</label>
                           <select name="viabilidad_tecnica" defaultValue={editingItem?.viabilidad_tecnica || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
-                            <option value="">Seleccione una opci  n</option>
+                            <option value="">Seleccione una opción</option>
                             <option value="1. Alta Complejidad">1. Alta Complejidad</option>
                             <option value="2. Media Complejidad">2. Media Complejidad</option>
                             <option value="3. Baja Complejidad">3. Baja Complejidad</option> 
                           </select>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Calificaci  n Total</label>
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Calificación Total</label>
                           <div className="w-full px-4 py-2 bg-indigo-100/50 border border-indigo-200 rounded-xl text-indigo-400 text-sm font-medium italic">
                             {editingItem?.calificacion ? `? ${editingItem.calificacion} Puntos` : 'Autom  tico'}
                           </div>
                         </div>
                         <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Orden de Ejecuci  n (Manual)</label>
+                          <label className="text-[10px] font-bold text-indigo-600 uppercase">Orden de Ejecución (Manual)</label>
                           <input name="orden_ejecucion" type="number" min="1" placeholder="Ej: 1" defaultValue={editingItem?.orden_ejecucion || ''} className="w-full px-4 py-2 bg-white border border-indigo-400 rounded-xl outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 font-bold text-indigo-900 shadow-sm" />
                         </div>
                       </div>

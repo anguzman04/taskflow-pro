@@ -18,7 +18,8 @@ model User {
   password              String
   debe_cambiar_password Boolean        @default(false)
   is_admin              Boolean        @default(false)
-  perm_control_delete   Int?           @default(0)
+ perm_control_edit     Boolean?       @default(false)
+  perm_control_delete   Boolean?       @default(false)
   
   // Permisos de Tareas
   can_create_tasks      Boolean        @default(false)
@@ -36,7 +37,7 @@ model User {
 // Permisos de Supervisión
   acceso_supervision    Boolean        @default(false)
   areas_autorizadas     String?
-  perm_control_edit     Boolean        @default(false) // <--- ESTA ES LA LÍNEA QUE FALTABA
+ // perm_control_edit     Boolean        @default(false) // <--- ESTA ES LA LÍNEA QUE FALTABA
   
   
   
