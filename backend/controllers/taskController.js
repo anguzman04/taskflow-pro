@@ -250,13 +250,35 @@ quickUpdate: async (req, res) => {
       // 3. Disparar notificación si se completó la tarea mediante edición rápida
       if (oldTask.estado !== 'Completado' && updatedTask.estado === 'Completado') {
         try {
+          const allUsers = await prisma.user.findMany();
+          const normalize = (str) => str.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+          const prioridadLimpia = updatedTask.prioridad?.includes('|') ? updatedTask.prioridad.split('|')[1] : updatedTask.prioridad;
+          const extraData = { actividad: updatedTask.actividad, fecha_fin: updatedTask.fecha_fin, prioridadLimpia };
+
+          // Notificar al creador
           await notificationService.dispatch({
             userId: updatedTask.created_by_id,
             taskId: updatedTask.id,
             message: `¡Excelente! La actividad <strong>"${updatedTask.actividad}"</strong> ha sido completada.`,
             type: 'SUCCESS',
-            forceEmail: false 
+            forceEmail: false
           });
+
+          // Notificar al responsable (si es distinto al creador)
+          const responsablesArray = updatedTask.responsable ? updatedTask.responsable.split(',').map(r => r.trim()) : [];
+          for (const respName of responsablesArray) {
+            const respUser = allUsers.find(u => normalize(`${u.nombre} ${u.apellido}`) === normalize(respName));
+            if (respUser && respUser.id !== updatedTask.created_by_id) {
+              await notificationService.dispatch({
+                userId: respUser.id,
+                taskId: updatedTask.id,
+                message: `¡Excelente! La actividad <strong>"${updatedTask.actividad}"</strong> que tienes asignada ha sido marcada como completada.`,
+                type: 'SUCCESS',
+                forceEmail: false,
+                extraData: { userName: respUser.nombre, ...extraData }
+              });
+            }
+          }
         } catch (eventError) {
           console.error("Error disparando evento de quickUpdate:", eventError);
         }
@@ -407,16 +429,37 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
         }
       });
 
-      // (Aquí se mantiene tu código de notificaciones que ya tenías...)
       try {
         if (oldTask.estado !== 'Completado' && updatedTask.estado === 'Completado') {
+          const allUsers = await prisma.user.findMany();
+          const normalize = (str) => str.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+          const prioridadLimpia = updatedTask.prioridad?.includes('|') ? updatedTask.prioridad.split('|')[1] : updatedTask.prioridad;
+          const extraData = { actividad: updatedTask.actividad, fecha_fin: updatedTask.fecha_fin, prioridadLimpia };
+
+          // Notificar al creador
           await notificationService.dispatch({
             userId: updatedTask.created_by_id,
             taskId: updatedTask.id,
             message: `¡Excelente! La actividad <strong>"${updatedTask.actividad}"</strong> ha sido completada.`,
             type: 'SUCCESS',
-            forceEmail: false 
+            forceEmail: false
           });
+
+          // Notificar al responsable (si es distinto al creador)
+          const responsablesArray = updatedTask.responsable ? updatedTask.responsable.split(',').map(r => r.trim()) : [];
+          for (const respName of responsablesArray) {
+            const respUser = allUsers.find(u => normalize(`${u.nombre} ${u.apellido}`) === normalize(respName));
+            if (respUser && respUser.id !== updatedTask.created_by_id) {
+              await notificationService.dispatch({
+                userId: respUser.id,
+                taskId: updatedTask.id,
+                message: `¡Excelente! La actividad <strong>"${updatedTask.actividad}"</strong> que tienes asignada ha sido marcada como completada.`,
+                type: 'SUCCESS',
+                forceEmail: false,
+                extraData: { userName: respUser.nombre, ...extraData }
+              });
+            }
+          }
         }
       } catch (e) { console.error(e); }
 
@@ -557,9 +600,18 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
   addSubtask: async (req, res) => {
     try {
       const { id } = req.params;
-      const { titulo } = req.body;
+      const { titulo, fecha_compromiso } = req.body;
+      const last = await prisma.subtask.findFirst({
+        where: { task_id: parseInt(id) },
+        orderBy: { orden: 'desc' }
+      });
       const newSubtask = await prisma.subtask.create({
-        data: { titulo, task_id: parseInt(id) }
+        data: {
+          titulo,
+          task_id: parseInt(id),
+          fecha_compromiso: fecha_compromiso || null,
+          orden: last ? last.orden + 1 : 0
+        }
       });
       await actualizarPorcentajeTarea(parseInt(id));
       res.status(201).json(newSubtask);
@@ -580,6 +632,32 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
       res.json(updatedSubtask);
     } catch (error) {
       res.status(500).json({ error: "Error al actualizar la subtarea" });
+    }
+  },
+
+  updateSubtaskFecha: async (req, res) => {
+    try {
+      const { subtaskId } = req.params;
+      const { fecha_compromiso } = req.body;
+      const updated = await prisma.subtask.update({
+        where: { id: parseInt(subtaskId) },
+        data: { fecha_compromiso: fecha_compromiso || null }
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Error al actualizar la fecha de la subtarea" });
+    }
+  },
+
+  reorderSubtasks: async (req, res) => {
+    try {
+      const items = req.body; // [{ id, orden }]
+      await Promise.all(items.map(item =>
+        prisma.subtask.update({ where: { id: item.id }, data: { orden: item.orden } })
+      ));
+      res.json({ message: "Orden actualizado" });
+    } catch (error) {
+      res.status(500).json({ error: "Error al reordenar las subtareas" });
     }
   },
 

@@ -197,13 +197,14 @@ model Project {
 
 // Agrega este NUEVO MODELO al final de tu archivo schema.prisma
 model Subtask {
-  id          Int      @id @default(autoincrement())
-  titulo      String
-  completada  Boolean  @default(false)
-  task_id     Int
-  created_at  DateTime @default(now())
+  id               Int      @id @default(autoincrement())
+  titulo           String
+  completada       Boolean  @default(false)
+  task_id          Int
+  created_at       DateTime @default(now())
+  fecha_compromiso String?
+  orden            Int      @default(0)
 
-  // Relación con borrado en cascada (si borras la tarea, se borran sus subtareas)
-  task        Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)
-  comments    Comment[] // <-- AGREGA ESTA LÍNEA
+  task     Task      @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  comments Comment[]
 }

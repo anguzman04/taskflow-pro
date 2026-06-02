@@ -7,9 +7,9 @@ import {
   LogOut, Bell, Eye, MessageSquare, Paperclip, History,
   Download, Upload, FolderKanban, CheckSquare, Square, ListChecks,
   PieChart as PieChartIconLucide, TrendingUp, Activity, FilterX, Lock, Columns,
-  PlayCircle, Reply, Tag 
+  PlayCircle, Reply, Tag, GripVertical
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import ExcelJS from 'exceljs';
@@ -302,6 +302,11 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [newSubtaskDate, setNewSubtaskDate] = useState('');
+  const [subtaskItems, setSubtaskItems] = useState<any[]>([]);
+  const [editingSubtaskDateId, setEditingSubtaskDateId] = useState<number | null>(null);
+  const subtaskItemsRef = React.useRef<any[]>([]);
+  const reorderPending = React.useRef(false);
   const [selectedResponsibles, setSelectedResponsibles] = useState<string[]>([]);
   const [userSearchTerm, setUserSearchTerm] = useState(''); 
   const [isImporting, setIsImporting] = useState(false);
@@ -334,6 +339,18 @@ export default function App() {
     if (isLoggedIn) { events.forEach(e => window.addEventListener(e, activityHandler)); resetTimer(); }
     return () => { clearTimeout(timeoutId); events.forEach(e => window.removeEventListener(e, activityHandler)); };
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (selectedTask?.subtasks) {
+      const sorted = [...selectedTask.subtasks].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0));
+      setSubtaskItems(sorted);
+      subtaskItemsRef.current = sorted;
+    } else {
+      setSubtaskItems([]);
+    }
+  }, [selectedTask?.id, selectedTask?.subtasks]);
+
+  useEffect(() => { subtaskItemsRef.current = subtaskItems; }, [subtaskItems]);
 
   const canViewSubtasks = (taskResponsable: string) => {
     if (!currentUser) return false;
@@ -762,9 +779,40 @@ const filteredReportTasks = tasks.filter(task => {
     if (!selectedTask || !newSubtaskTitle.trim()) return;
     try {
       const res = await fetch(`/api/tasks/${selectedTask.id}/subtasks`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ titulo: newSubtaskTitle })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titulo: newSubtaskTitle, fecha_compromiso: newSubtaskDate || null })
       });
-      if (res.ok) { setNewSubtaskTitle(''); fetchTasks(); }
+      if (res.ok) { setNewSubtaskTitle(''); setNewSubtaskDate(''); fetchTasks(); }
+    } catch(e) {}
+  };
+
+  const handleUpdateSubtaskDate = async (subtaskId: number, fecha: string) => {
+    setEditingSubtaskDateId(null);
+    try {
+      await fetch(`/api/tasks/subtasks/${subtaskId}/fecha`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fecha_compromiso: fecha || null })
+      });
+      fetchTasks();
+    } catch(e) {}
+  };
+
+  const handleSubtaskReorder = (newOrder: any[]) => {
+    setSubtaskItems(newOrder);
+    reorderPending.current = true;
+  };
+
+  const persistSubtaskOrder = async () => {
+    if (!reorderPending.current || !selectedTask) return;
+    reorderPending.current = false;
+    try {
+      await fetch(`/api/tasks/${selectedTask.id}/subtasks/reorder`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(subtaskItemsRef.current.map((st, i) => ({ id: st.id, orden: i })))
+      });
     } catch(e) {}
   };
 
@@ -2831,28 +2879,47 @@ case 'responsable':
                    <div className="flex-1 overflow-y-auto p-6">
                       {detailsTab === 'subtasks' && (
                          <div className="flex flex-col h-[50vh]">
-                            <div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-2">
-                               {(!selectedTask.subtasks || selectedTask.subtasks.length === 0) ? (
+                            <div className="flex-1 overflow-y-auto mb-4 pr-2" onPointerUp={persistSubtaskOrder}>
+                               {subtaskItems.length === 0 ? (
                                   <div className="flex flex-col items-center justify-center h-full text-slate-400"><ListChecks size={32} className="mb-2 opacity-50" /><span className="text-sm font-medium">No hay subtareas registradas en esta actividad</span></div>
                                ) : (
-                                  selectedTask.subtasks.map((st: any) => {
-                                     const canToggle = canToggleSubtasks(String(selectedTask.responsable));
-                                     const canDelete = canDeleteSubtasks();
-                                     return (
-                                     <div key={st.id} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors">
-                                        <button disabled={!canToggle} onClick={() => canToggle && handleToggleSubtask(st.id, st.completada)} className={`transition-colors ${st.completada ? 'text-emerald-500' : 'text-slate-300'} ${canToggle ? 'hover:text-blue-500 cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>{st.completada ? <CheckSquare size={20} /> : <Square size={20} />}</button>
-                                        <span className={`flex-1 text-sm ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-bold'}`}>{st.titulo}</span>
-                                        {canDelete && <button onClick={() => handleDeleteSubtask(st.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded-md transition-colors" title="Eliminar"><Trash2 size={16}/></button>}
-                                        {!canDelete && !canToggle && <Lock size={14} className="text-slate-300" title="Sin permisos de modificaci  n" />}
-                                     </div>
-                                     );
-                                  })
+                                  <Reorder.Group axis="y" values={subtaskItems} onReorder={handleSubtaskReorder} className="space-y-2">
+                                     {subtaskItems.map((st: any) => {
+                                        const canToggle = canToggleSubtasks(String(selectedTask.responsable));
+                                        const canDelete = canDeleteSubtasks();
+                                        const today = new Date(); today.setHours(0,0,0,0);
+                                        const isOverdue = st.fecha_compromiso && !st.completada && new Date(st.fecha_compromiso) < today;
+                                        return (
+                                           <Reorder.Item key={st.id} value={st} className={`flex items-center gap-2 p-3 border rounded-xl transition-colors cursor-grab active:cursor-grabbing active:shadow-md active:z-10 ${isOverdue ? 'border-red-200 bg-red-50/60' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
+                                              <GripVertical size={15} className="text-slate-300 shrink-0 pointer-events-none" />
+                                              <button disabled={!canToggle} onClick={() => canToggle && handleToggleSubtask(st.id, st.completada)} className={`transition-colors shrink-0 ${st.completada ? 'text-emerald-500' : 'text-slate-300'} ${canToggle ? 'hover:text-blue-500 cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>{st.completada ? <CheckSquare size={20} /> : <Square size={20} />}</button>
+                                              <span className={`flex-1 text-sm min-w-0 ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-bold'}`}>{st.titulo}</span>
+                                              {editingSubtaskDateId === st.id ? (
+                                                 <input type="date" defaultValue={st.fecha_compromiso || ''} className="text-xs px-2 py-1 border border-indigo-300 rounded-lg outline-none focus:border-indigo-500 bg-white" autoFocus onBlur={e => handleUpdateSubtaskDate(st.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleUpdateSubtaskDate(st.id, (e.target as HTMLInputElement).value); if (e.key === 'Escape') setEditingSubtaskDateId(null); }} />
+                                              ) : (
+                                                 <button onClick={() => setEditingSubtaskDateId(st.id)} title="Editar fecha de compromiso" className={`text-xs px-2 py-1 rounded-lg flex items-center gap-1 shrink-0 transition-colors ${st.fecha_compromiso ? (isOverdue ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200') : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'}`}>
+                                                    <Calendar size={12} />
+                                                    <span>{st.fecha_compromiso || 'Fecha'}</span>
+                                                 </button>
+                                              )}
+                                              {canDelete && <button onClick={() => handleDeleteSubtask(st.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded-md transition-colors shrink-0" title="Eliminar"><Trash2 size={16}/></button>}
+                                              {!canDelete && !canToggle && <Lock size={14} className="text-slate-300 shrink-0" />}
+                                           </Reorder.Item>
+                                        );
+                                     })}
+                                  </Reorder.Group>
                                )}
                             </div>
                             {canCreateSubtasks() && (
-                               <form onSubmit={handleAddSubtask} className="mt-auto pt-4 border-t border-slate-100 flex gap-2">
-                                  <input type="text" value={newSubtaskTitle} onChange={e => setNewSubtaskTitle(e.target.value)} placeholder="Escribe una nueva subtarea..." className="flex-1 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-400" required />
-                                  <button type="submit" className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2"><Plus size={16}/> Agregar</button>
+                               <form onSubmit={handleAddSubtask} className="mt-auto pt-4 border-t border-slate-100 flex flex-col gap-2">
+                                  <input type="text" value={newSubtaskTitle} onChange={e => setNewSubtaskTitle(e.target.value)} placeholder="Escribe una nueva subtarea..." className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-400" required />
+                                  <div className="flex gap-2">
+                                     <div className="flex items-center gap-2 flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+                                        <Calendar size={14} className="text-slate-400 shrink-0" />
+                                        <input type="date" value={newSubtaskDate} onChange={e => setNewSubtaskDate(e.target.value)} className="flex-1 text-sm bg-transparent outline-none text-slate-600" />
+                                     </div>
+                                     <button type="submit" className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 whitespace-nowrap"><Plus size={16}/> Agregar</button>
+                                  </div>
                                </form>
                             )}
                          </div>

@@ -91,7 +91,40 @@ const startCronJobs = () => {
       }
 	  
       
-      console.log(`✅ [CRON] Fin de validación. Tareas Atrasadas: ${atrasadas}`);
+      console.log(`✅ Tareas Atrasadas: ${atrasadas}`);
+
+      // === BLOQUE 2: TAREAS PRÓXIMAS A VENCER (2 días) ===
+      const twoDaysFromNow = new Date(today);
+      twoDaysFromNow.setDate(today.getDate() + 2);
+      const threeDaysFromNow = new Date(today);
+      threeDaysFromNow.setDate(today.getDate() + 3);
+
+      let proximas = 0;
+      for (const task of activeTasks) {
+        const responsablesArray = task.responsable ? task.responsable.split(',').map(r => r.trim()) : [];
+        const fechaFinTarea = task.fecha_fin ? new Date(task.fecha_fin) : null;
+
+        if (fechaFinTarea && fechaFinTarea >= twoDaysFromNow && fechaFinTarea < threeDaysFromNow) {
+          proximas++;
+          const warnedToday = await prisma.notification.findFirst({
+            where: {
+              task_id: task.id,
+              type: 'WARNING',
+              created_at: { gte: today }
+            }
+          });
+
+          if (!warnedToday) {
+            const fechaLimpia = fechaFinTarea.toISOString().split('T')[0];
+            console.log(`   ⚠️ PRÓXIMA A VENCER: "${task.actividad.substring(0, 30)}..." vence el ${fechaLimpia}`);
+            await notifyResponsibles(task, responsablesArray, allUsers, 'WARNING', `⚠️ AVISO: La actividad "${task.actividad}" vence en 2 días (${fechaLimpia}). ¡Asegúrate de completarla a tiempo!`);
+          } else {
+            console.log(`   🚫 ANTI-SPAM: "${task.actividad.substring(0, 30)}..." próxima a vencer, ya se avisó hoy.`);
+          }
+        }
+      }
+      console.log(`⚠️ Tareas próximas a vencer (2 días): ${proximas}`);
+      console.log(`✅ [CRON] Fin de validación.`);
       console.log("--------------------------------------------------\n");
     } catch (error) {
       console.error("❌ Error en Cron Job:", error);

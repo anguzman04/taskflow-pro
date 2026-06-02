@@ -67,9 +67,11 @@ router.delete('/tasks/:id', taskController.delete);
 // Ruta para edición rápida (inline)
 router.patch('/tasks/:id/quick', taskController.quickUpdate);
 
-// --- NUEVAS RUTAS DE SUBTAREAS ---
+// --- RUTAS DE SUBTAREAS ---
 router.post('/tasks/:id/subtasks', taskController.addSubtask);
+router.put('/tasks/:id/subtasks/reorder', taskController.reorderSubtasks);
 router.put('/tasks/subtasks/:subtaskId', taskController.toggleSubtask);
+router.patch('/tasks/subtasks/:subtaskId/fecha', taskController.updateSubtaskFecha);
 router.delete('/tasks/subtasks/:subtaskId', taskController.deleteSubtask);
 
 // Proyectos
