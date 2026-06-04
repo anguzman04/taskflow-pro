@@ -29,10 +29,11 @@ model User {
   can_delete_evidence   Boolean        @default(false)
   
   // --- NUEVOS PERMISOS DE SUBTAREAS ---
-  perm_subtasks_view    Boolean        @default(false)
-  perm_subtasks_create  Boolean        @default(false)
-  perm_subtasks_edit    Boolean        @default(false)
-  perm_subtasks_delete  Boolean        @default(false)
+  perm_subtasks_view         Boolean        @default(false)
+  perm_subtasks_create       Boolean        @default(false)
+  perm_subtasks_edit         Boolean        @default(false)
+  perm_subtasks_edit_title   Boolean        @default(false)
+  perm_subtasks_delete       Boolean        @default(false)
   
 // Permisos de Supervisión
   acceso_supervision    Boolean        @default(false)

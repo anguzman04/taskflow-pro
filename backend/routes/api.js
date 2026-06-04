@@ -72,6 +72,7 @@ router.post('/tasks/:id/subtasks', taskController.addSubtask);
 router.put('/tasks/:id/subtasks/reorder', taskController.reorderSubtasks);
 router.put('/tasks/subtasks/:subtaskId', taskController.toggleSubtask);
 router.patch('/tasks/subtasks/:subtaskId/fecha', taskController.updateSubtaskFecha);
+router.patch('/tasks/subtasks/:subtaskId/titulo', taskController.updateSubtaskTitulo);
 router.delete('/tasks/subtasks/:subtaskId', taskController.deleteSubtask);
 
 // Proyectos

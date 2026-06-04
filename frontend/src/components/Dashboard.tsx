@@ -7,7 +7,7 @@ import {
   LogOut, Bell, Eye, MessageSquare, Paperclip, History,
   Download, Upload, FolderKanban, CheckSquare, Square, ListChecks,
   PieChart as PieChartIconLucide, TrendingUp, Activity, FilterX, Lock, Columns,
-  PlayCircle, Reply, Tag, GripVertical
+  PlayCircle, Reply, Tag, GripVertical, Trophy, Medal, Menu, ChevronLeft
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
@@ -200,6 +200,7 @@ type View = 'tasks' | 'users' | 'areas' | 'control' | 'projects' | 'reports';
 type DetailsTab = 'comments' | 'attachments' | 'subtasks';
 
 export default function App() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentView, setCurrentView] = useState<View>('tasks');
   const [taskTab, setTaskTab] = useState<'personal' | 'team'>('personal');
   const [taskDisplayMode, setTaskDisplayMode] = useState<'list' | 'kanban'>('list');
@@ -300,11 +301,13 @@ export default function App() {
   
   // ?? A?ADE ESTA L  NEA
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingTaskFromProject, setEditingTaskFromProject] = useState(false);
 
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [newSubtaskDate, setNewSubtaskDate] = useState('');
   const [subtaskItems, setSubtaskItems] = useState<any[]>([]);
   const [editingSubtaskDateId, setEditingSubtaskDateId] = useState<number | null>(null);
+  const [editingSubtaskTitleId, setEditingSubtaskTitleId] = useState<number | null>(null);
   const subtaskItemsRef = React.useRef<any[]>([]);
   const reorderPending = React.useRef(false);
   const [selectedResponsibles, setSelectedResponsibles] = useState<string[]>([]);
@@ -366,6 +369,15 @@ export default function App() {
   const canToggleSubtasks = (taskResponsable: string) => {
     if (!currentUser) return false;
     if (currentUser.is_admin || currentUser.perm_subtasks_edit) return true;
+    const normalizeText = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim().toUpperCase() : '';
+    const miNombre = normalizeText(`${currentUser.nombre || ''} ${currentUser.apellido || ''}`);
+    return normalizeText(taskResponsable || '').includes(miNombre);
+  };
+
+  const canEditSubtaskContent = (taskResponsable: string, taskCreatorId?: number) => {
+    if (!currentUser) return false;
+    if (currentUser.is_admin || currentUser.perm_subtasks_edit_title) return true;
+    if (taskCreatorId && currentUser.id === taskCreatorId) return true;
     const normalizeText = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim().toUpperCase() : '';
     const miNombre = normalizeText(`${currentUser.nombre || ''} ${currentUser.apellido || ''}`);
     return normalizeText(taskResponsable || '').includes(miNombre);
@@ -726,17 +738,17 @@ const filteredReportTasks = tasks.filter(task => {
       setFormJefe(''); setAccesoSupervision(false); setSelectedAreas([]);
     }
 
-    if (editingItem && currentView === 'tasks') {
+    if (editingItem && (currentView === 'tasks' || editingTaskFromProject)) {
         if(editingItem.responsable) {
             const validUserNames = allUsers.map(u => `${u.nombre || ''} ${u.apellido || ''}`.trim().toLowerCase());
             const currentResps = String(editingItem.responsable).split(',').map((r:string) => r.trim());
-            
+
             const cleanResps = currentResps.filter(r => validUserNames.includes(r.toLowerCase()));
             setSelectedResponsibles(cleanResps);
         }
         else setSelectedResponsibles([]);
     } else setSelectedResponsibles([]);
-  }, [editingItem, currentView, areas, allUsers]);
+  }, [editingItem, currentView, areas, allUsers, editingTaskFromProject]);
 
   const markNotificationsRead = async () => {
     try { await fetch('/api/notifications/read', { method: 'PUT' }); fetchNotifications(); } catch (err) {}
@@ -794,6 +806,19 @@ const filteredReportTasks = tasks.filter(task => {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fecha_compromiso: fecha || null })
+      });
+      fetchTasks();
+    } catch(e) {}
+  };
+
+  const handleUpdateSubtaskTitle = async (subtaskId: number, titulo: string) => {
+    if (!titulo.trim()) { setEditingSubtaskTitleId(null); return; }
+    setEditingSubtaskTitleId(null);
+    try {
+      await fetch(`/api/tasks/subtasks/${subtaskId}/titulo`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titulo: titulo.trim() })
       });
       fetchTasks();
     } catch(e) {}
@@ -1040,27 +1065,30 @@ const handleTaskSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
   
   
   
-if (res.ok) { 
-          setIsModalOpen(false); 
-          fetchTasks(); 
-          fetchControlTasks(); 
-          setPreselectedProjectId(null); 
-          setSelectedResponsibles([]); 
-      } 
-      else { 
-          const errorData = await res.json(); 
-          alert(errorData.error || "Ocurrió un error al guardar la tarea."); 
-          
+if (res.ok) {
+          setIsModalOpen(false);
+          setEditingTaskFromProject(false);
+          fetchTasks();
+          fetchControlTasks();
+          setPreselectedProjectId(null);
+          setSelectedResponsibles([]);
+      }
+      else {
+          const errorData = await res.json();
+          alert(errorData.error || "Ocurrió un error al guardar la tarea.");
+
           // 👇 REFRESH AUTOMÁTICO EN CASO DE ERROR
           setIsModalOpen(false); // Cerramos el modal para limpiar la vista
+          setEditingTaskFromProject(false);
           fetchTasks();          // Recargamos los datos reales de la BD
           fetchControlTasks();
       }
     } catch (err) {
       alert("Error de conexión al servidor al guardar la tarea.");
-      
+
       // 👇 REFRESH AUTOMÁTICO EN CASO DE CAÍDA DE RED
       setIsModalOpen(false);
+      setEditingTaskFromProject(false);
       fetchTasks();
       fetchControlTasks();
     } finally {
@@ -1237,7 +1265,8 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         can_download_evidence: formData.get('can_download_evidence') === 'on' ? true : false,
         can_delete_evidence: formData.get('can_delete_evidence') === 'on' ? true : false,
         perm_subtasks_view: formData.get('perm_subtasks_view') === 'on' ? 1 : 0, perm_subtasks_create: formData.get('perm_subtasks_create') === 'on' ? 1 : 0,
-        perm_subtasks_edit: formData.get('perm_subtasks_edit') === 'on' ? 1 : 0, perm_subtasks_delete: formData.get('perm_subtasks_delete') === 'on' ? 1 : 0,
+        perm_subtasks_edit: formData.get('perm_subtasks_edit') === 'on' ? 1 : 0, perm_subtasks_edit_title: formData.get('perm_subtasks_edit_title') === 'on' ? 1 : 0,
+        perm_subtasks_delete: formData.get('perm_subtasks_delete') === 'on' ? 1 : 0,
       };
       const res = await fetch(editingItem ? `/api/users/${editingItem.id}` : '/api/users', { method: editingItem ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(userData) });
       if (res.ok) { setIsModalOpen(false); fetchUsers(); } 
@@ -1628,8 +1657,8 @@ const renderDynamicCell = (colId: string, task: any, index: number, isControlVie
     const canView = canViewSubtasks(String(task.responsable));
     const isTaskLocked = task.estado === 'Completado' || task.estado === 'Cancelado';
     const isTaskActive = task.estado !== 'Planeado' || task.porcentaje_avance > 0;
-    
     const canEditTask = !!(currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked));
+    const canEditControl = !!(currentUser?.is_admin || (currentUser as any)?.perm_control_edit);
     const canDeleteTask = !!(currentUser?.is_admin || (currentUser?.can_delete_tasks && !isTaskActive));
 
     switch(colId) {
@@ -1647,12 +1676,19 @@ const renderDynamicCell = (colId: string, task: any, index: number, isControlVie
       case 'actividad':
         return (
           <td key={`actividad-${task.id}`} className="px-6 py-4">
-            <div className="text-sm font-bold text-slate-900">{task.actividad}</div>
+            <div
+              onClick={() => {
+                const canEdit = isControlView ? canEditControl : canEditTask;
+                if (canEdit) { setEditingItem(task); setIsModalOpen(true); }
+                else { setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }
+              }}
+              className="text-sm font-bold text-slate-900 cursor-pointer hover:text-blue-600 hover:underline transition-colors max-w-[250px] leading-tight"
+            >{task.actividad}</div>
             <span className={`text-[9px] font-black px-2 py-0.5 mt-1 rounded-full uppercase inline-block bg-slate-100 text-slate-500 border-slate-200 ${getPriorityColor(task.prioridad)}`}>{getPriorityLabel(task.prioridad)}</span>
             {task.calificacion && <span className="ml-2 text-[9px] font-black px-2 py-0.5 rounded-full uppercase inline-block bg-indigo-100 text-indigo-700 border-indigo-200">⚡ {task.calificacion} pts</span>}
             {totalSubtasks > 0 && canView && (
               <div className="mt-2">
-                <button onClick={() => toggleTaskSubtasksExpand(task.id!)} className="flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-indigo-600 transition-colors w-max">
+                <button onClick={() => toggleTaskSubtasksExpand(task.id!)} className="flex items-center gap-1 text-[10px] font-bold text-slate-500 hover:text-indigo-600 transition-colors">
                   <ChevronDown size={14} className={`transition-transform ${isTaskSubExpanded ? 'rotate-180' : ''}`} /> 📋 Subtareas ({completedSubtasks}/{totalSubtasks})
                 </button>
               </div>
@@ -1662,7 +1698,7 @@ const renderDynamicCell = (colId: string, task: any, index: number, isControlVie
       case 'proyecto':
         return (
           <td key={`proyecto-${task.id}`} className="px-6 py-4">
-            {taskProject ? <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 flex items-center gap-1 w-max"><FolderKanban size={10} /> {taskProject.nombre}</span> : <span className="text-xs text-slate-300 italic">-</span>}
+            {taskProject ? <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100 flex items-center gap-1 w-fit max-w-[150px]"><FolderKanban size={10} className="shrink-0" /> <span className="truncate">{taskProject.nombre}</span></span> : <span className="text-xs text-slate-300 italic">-</span>}
           </td>
         );
 		
@@ -1830,13 +1866,13 @@ case 'responsable':
                 
                 <div>
                   {/* Nombre del Responsable Principal */}
-                  <span className="text-xs font-bold text-slate-700 block whitespace-nowrap">
+                  <span className="text-xs font-bold text-slate-700 block leading-tight mb-1">
                     {responsablesArray[0]}
                   </span>
                   
                   {/* Contenedor de Badges (Área + Contador de extras) */}
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase inline-block border border-blue-100/50">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[9px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full uppercase inline-block border border-blue-100/50 max-w-[120px] truncate">
                       {(() => {
                         const respUser = allUsers.find(u => `${u.nombre || ''} ${u.apellido || ''}`.trim() === responsablesArray[0]);
                         const area = areas.find(a => a.id === respUser?.area_id);
@@ -1895,11 +1931,10 @@ case 'responsable':
         return (
           <td key={`acciones-${task.id}`} className="px-6 py-4">
             <div className="flex justify-center gap-2">
-              <button onClick={() => { setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Ver Detalles"><Eye size={16} /></button>
+              <button onClick={(e) => { e.stopPropagation(); setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Ver Detalles"><Eye size={16} /></button>
               {!isControlView ? (
                 <>
-                  {canEditTask ? <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea"><Edit2 size={16} /></button> : (currentUser?.can_edit_tasks && isTaskLocked) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
-                  {canDeleteTask ? <button onClick={() => handleDelete(task.id!, 'tasks')} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar Tarea"><Trash2 size={16} /></button> : (currentUser?.can_delete_tasks && isTaskActive) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
+                  {canDeleteTask ? <button onClick={(e) => { e.stopPropagation(); handleDelete(task.id!, 'tasks'); }} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar Tarea"><Trash2 size={16} /></button> : (currentUser?.can_delete_tasks && isTaskActive) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
                 </>
 /*               ) : (
                 (currentUser?.is_admin || (currentUser as any)?.perm_control_edit) && (
@@ -1913,12 +1948,8 @@ case 'responsable':
 	  // ... código previo (línea 1374 aprox)
               ) : (
                 <>
-                  {(currentUser?.is_admin || (currentUser as any)?.perm_control_edit) && (
-                    <button onClick={() => { setEditingItem(task); setIsModalOpen(true); }} className="text-slate-400 hover:text-blue-600 transition-colors" title="Editar Tarea desde Control"><Edit2 size={16} /></button>
-                  )}
-                  {/* 🚀 NUEVO: Botón de eliminar con doble validación de permisos */}
                   {(currentUser?.is_admin || (currentUser as any)?.perm_control_delete) && (
-                    <button onClick={() => handleDeleteControlTask(task.id!)} className="text-slate-400 hover:text-red-600 transition-colors ml-2" title="Eliminar Tarea del Tablero">
+                    <button onClick={(e) => { e.stopPropagation(); handleDeleteControlTask(task.id!); }} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar Tarea del Tablero">
                       <Trash2 size={16} />
                     </button>
                   )}
@@ -1936,21 +1967,37 @@ case 'responsable':
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
-      <aside className="w-full md:w-64 bg-white border-r border-slate-200 flex flex-col sticky top-0 h-screen z-20">
-        <div className="p-6 border-b border-slate-100">
+      {/* Sidebar Mobile Overlay */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            onClick={() => setIsSidebarOpen(false)} 
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-30 md:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 h-screen shrink-0 shadow-xl md:shadow-none`}>
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white"><LayoutDashboard size={18} /></div>
             TaskFlow Pro
           </h1>
+          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-2 text-slate-400 hover:bg-slate-50 rounded-lg">
+            <ChevronLeft size={20} />
+          </button>
         </div>
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <button onClick={() => setCurrentView('tasks')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'tasks' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FileText size={18} /> Panel de Actividades</button>
-          {canViewProjects && <button onClick={() => setCurrentView('projects')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'projects' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FolderKanban size={18} /> Gestión de Proyectos</button>}
-          {canViewReports && <button onClick={() => setCurrentView('reports')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'reports' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><PieChartIconLucide size={18} /> Reportes</button>}
-          {canViewUsers && <button onClick={() => setCurrentView('users')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'users' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={18} /> Gestión de Usuarios</button>}
-          {canViewAreas && <button onClick={() => setCurrentView('areas')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} /> Gestión de áreas</button>}
-          {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => setCurrentView('control')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} /> Control de Gestión </button>}
+          <button onClick={() => { setCurrentView('tasks'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'tasks' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FileText size={18} /> Panel de Actividades</button>
+          {canViewProjects && <button onClick={() => { setCurrentView('projects'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'projects' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FolderKanban size={18} /> Gestión de Proyectos</button>}
+          {canViewReports && <button onClick={() => { setCurrentView('reports'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'reports' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><PieChartIconLucide size={18} /> Reportes</button>}
+          {canViewUsers && <button onClick={() => { setCurrentView('users'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'users' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={18} /> Gestión de Usuarios</button>}
+          {canViewAreas && <button onClick={() => { setCurrentView('areas'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} /> Gestión de áreas</button>}
+          {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => { setCurrentView('control'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} /> Control de Gestión </button>}
         </nav>
 
         <div className="p-4 border-t border-slate-100 bg-slate-50/50">
@@ -1968,35 +2015,41 @@ case 'responsable':
       </aside>
 
       <main className="flex-1 overflow-y-auto h-screen relative" onClick={() => { if(showImportMenu) setShowImportMenu(false); if(showColumnManager) setShowColumnManager(false); }}>
-        <header className="bg-white border-b border-slate-200 px-8 pt-8 pb-0 sticky top-0 z-10">
+        <header className="bg-white border-b border-slate-200 px-4 lg:px-8 pt-4 lg:pt-8 pb-0 sticky top-0 z-10">
           <div className="flex justify-between items-start mb-6">
             <div className="space-y-4 w-full">
-              <div className="flex justify-between items-center">
-                <div>
+              <div className="flex justify-between items-center gap-4">
+                <div className="min-w-0 flex items-center gap-3">
+                  <button 
+                    onClick={() => setIsSidebarOpen(!isSidebarOpen)} 
+                    className="p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-lg md:hidden"
+                  >
+                    <Menu size={20} />
+                  </button>
                   {currentView === 'tasks' ? (
                     <>
                       <div className="flex items-center gap-4 mb-1">
-                        <button onClick={() => setTaskTab('personal')} className={`text-2xl font-bold transition-all ${taskTab === 'personal' ? 'text-slate-900 border-b-2 border-blue-600 pb-1' : 'text-slate-400 hover:text-slate-600'}`}>Mis Tareas</button>
-                        <button onClick={() => setTaskTab('team')} className={`text-2xl font-bold transition-all ${taskTab === 'team' ? 'text-slate-900 border-b-2 border-blue-600 pb-1' : 'text-slate-400 hover:text-slate-600'}`}>Equipo</button>
+                        <button onClick={() => setTaskTab('personal')} className={`text-lg sm:text-xl lg:text-2xl font-bold transition-all ${taskTab === 'personal' ? 'text-slate-900 border-b-2 border-blue-600 pb-1' : 'text-slate-400 hover:text-slate-600'}`}>Mis Tareas</button>
+                        <button onClick={() => setTaskTab('team')} className={`text-lg sm:text-xl lg:text-2xl font-bold transition-all ${taskTab === 'team' ? 'text-slate-900 border-b-2 border-blue-600 pb-1' : 'text-slate-400 hover:text-slate-600'}`}>Equipo</button>
                       </div>
-                      <p className="text-slate-500 text-sm">Gestiona y supervisa las actividades</p>
+                      <p className="text-slate-500 text-xs sm:text-sm truncate">Gestiona y supervisa las actividades</p>
                     </>
                   ) : currentView === 'reports' ? (
                     <>
-                      <h2 className="text-2xl font-bold text-slate-900 capitalize">Reportes Gerenciales</h2>
-                      <p className="text-slate-500 text-sm">Visualización de datos y métricas globales</p>
+                      <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 capitalize truncate">Reportes Gerenciales</h2>
+                      <p className="text-slate-500 text-xs sm:text-sm truncate">Visualización de datos y métricas globales</p>
                     </>
                   ) : (
                     <>
-                      <h2 className="text-2xl font-bold text-slate-900 capitalize">
+                      <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 capitalize truncate">
                         {currentView === 'users' ? 'Gestión de Usuarios' : currentView === 'areas' ? 'Gestión de áreas' : currentView === 'projects' ? 'Gestión de Proyectos' : 'Control de Gestión'}
                       </h2>
-                      <p className="text-slate-500 text-sm">Administración y supervisión del sistema</p>
+                      <p className="text-slate-500 text-xs sm:text-sm truncate">Administración y supervisión del sistema</p>
                     </>
                   )}
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 lg:gap-4 flex-wrap justify-end">
                   {(currentView === 'tasks' || currentView === 'control') && (
                     <div className="hidden lg:flex bg-slate-50 rounded-xl px-4 py-2 border border-slate-200 items-center gap-4">
                       <div className="text-right">
@@ -2040,8 +2093,12 @@ case 'responsable':
                     <div className="relative">
                       <input type="file" id="excel-upload" accept=".xlsx, .xls" hidden onChange={handleImportExcel} />
                       <div className="flex rounded-xl shadow-lg shadow-indigo-200">
-                        <button onClick={() => document.getElementById('excel-upload')?.click()} disabled={isImporting} className="bg-indigo-600 text-white px-4 py-2.5 rounded-l-xl font-medium flex items-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 border-r border-indigo-700"><Upload size={18} /> {isImporting ? 'Importando...' : 'Importar'}</button>
-                        <button onClick={(e) => { e.stopPropagation(); setShowImportMenu(!showImportMenu); }} disabled={isImporting} className="bg-indigo-600 text-white px-2 py-2.5 rounded-r-xl hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center"><ChevronDown size={18} /></button>
+                        <button onClick={() => document.getElementById('excel-upload')?.click()} disabled={isImporting} className="bg-indigo-600 text-white px-3 sm:px-4 py-2.5 rounded-l-xl font-medium flex items-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50 border-r border-indigo-700">
+                          <Upload size={18} /> <span className="hidden sm:inline">{isImporting ? 'Importando...' : 'Importar'}</span>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setShowImportMenu(!showImportMenu); }} disabled={isImporting} className="bg-indigo-600 text-white px-2 py-2.5 rounded-r-xl hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center">
+                          <ChevronDown size={18} />
+                        </button>
                       </div>
 
                       <AnimatePresence>
@@ -2058,14 +2115,14 @@ case 'responsable':
                   )}
 
                   {(currentView === 'tasks' || currentView === 'control') && (
-                    <button onClick={handleExportExcel} className="bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 active:scale-95">
-                      <Download size={18} /> Exportar Excel
+                    <button onClick={handleExportExcel} className="bg-emerald-600 text-white px-3 sm:px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 active:scale-95">
+                      <Download size={18} /> <span className="hidden sm:inline">Exportar Excel</span>
                     </button>
                   )}
 
                   {canCreateInCurrentView() && currentView !== 'reports' && (
-                    <button onClick={() => { setEditingItem(null); setPreselectedProjectId(null); setUserSearchTerm(''); setIsModalOpen(true); }} className="bg-slate-900 text-white px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 active:scale-95">
-                      <Plus size={18} /> {currentView === 'tasks' ? 'Nueva Tarea' : currentView === 'users' ? 'Nuevo Usuario' : currentView === 'projects' ? 'Nuevo Proyecto' : 'Nueva   rea'}
+                    <button onClick={() => { setEditingItem(null); setPreselectedProjectId(null); setUserSearchTerm(''); setIsModalOpen(true); }} className="bg-slate-900 text-white px-3 sm:px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 active:scale-95">
+                      <Plus size={18} /> <span className="hidden sm:inline">{currentView === 'tasks' ? 'Nueva Tarea' : currentView === 'users' ? 'Nuevo Usuario' : currentView === 'projects' ? 'Nuevo Proyecto' : 'Nueva Área'}</span>
                     </button>
                   )}
                 </div>
@@ -2074,7 +2131,7 @@ case 'responsable':
           </div>
         </header>
 
-        <div className="p-8">
+        <div className="p-4 lg:p-8">
           
           {currentView === 'reports' && renderReportsView()}
 
@@ -2189,7 +2246,7 @@ case 'responsable':
                       <option value="Planeado">Planeado</option>
                       <option value="En curso">En curso</option>
                       <option value="En espera">En espera</option>
-                      <option value="Atrasadas">Atrasadas ??</option>
+                      <option value="Atrasadas">Atrasadas 🚨</option>
                       <option value="Completado">Completado</option>
                     </select>
                   )}
@@ -2224,8 +2281,8 @@ case 'responsable':
 
                                   return (
                                     <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ type: "spring", stiffness: 300, damping: 25 }} key={task.id} draggable={canEditTask ? "true" : "false"} onDragStart={(e) => handleDragStart(e as any, task)} onClick={() => { setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }} className={`relative bg-white p-4 rounded-xl shadow-sm border border-slate-200 transition-all ${canEditTask ? 'cursor-grab active:cursor-grabbing hover:border-blue-300 hover:shadow-md' : 'cursor-pointer hover:border-slate-300'}`}>
-                                      <div className={`absolute -top-2 -right-2 w-7 h-7 rounded-full flex items-center justify-center text-xs shadow-md border ${globalIndex === 0 ? 'bg-yellow-100 border-yellow-300 text-lg' : globalIndex === 1 ? 'bg-slate-100 border-slate-300 text-lg' : globalIndex === 2 ? 'bg-orange-100 border-orange-300 text-lg' : 'bg-white border-slate-200 z-10'}`}>
-                                        {globalIndex === 0 ? '??' : globalIndex === 1 ? '??' : globalIndex === 2 ? '??' : <span className="font-black text-slate-500">#{globalIndex + 1}</span>}
+                                      <div className={`absolute -top-2 -right-2 w-7 h-7 rounded-full flex items-center justify-center text-xs shadow-md border ${globalIndex === 0 ? 'bg-yellow-100 border-yellow-300' : globalIndex === 1 ? 'bg-slate-100 border-slate-300' : globalIndex === 2 ? 'bg-orange-100 border-orange-300' : 'bg-white border-slate-200 z-10'}`}>
+                                        {globalIndex === 0 ? <Trophy size={14} className="text-yellow-600" /> : globalIndex === 1 ? <Medal size={14} className="text-slate-500" /> : globalIndex === 2 ? <Medal size={14} className="text-orange-600" /> : <span className="font-black text-slate-500">#{globalIndex + 1}</span>}
                                       </div>
                                       <div className="flex justify-between items-start mb-2.5 pr-4"><span className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${getPriorityColor(task.prioridad)}`}>{getPriorityLabel(task.prioridad)}</span></div>
                                       <h4 className="text-sm font-bold text-slate-800 mb-1 leading-snug line-clamp-2">{task.actividad}</h4>
@@ -2316,7 +2373,7 @@ case 'responsable':
                           <div className="flex items-center gap-4 flex-1">
                             <div className={`p-3 rounded-xl ${projectOverdueDays > 0 ? 'bg-red-50 text-red-600' : project.prioritario ? 'bg-orange-50 text-orange-600' : 'bg-indigo-50 text-indigo-600'}`}><FolderKanban size={20}/></div>
                             <div>
-                              <div className="flex items-center gap-2"><h3 className="font-bold text-slate-900 text-lg">{project.nombre}</h3>{project.prioritario && <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded uppercase tracking-tighter">?? Prioritario</span>}{projectOverdueDays > 0 && <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-tighter">?? Atrasado</span>}</div>
+                              <div className="flex items-center gap-2"><h3 className="font-bold text-slate-900 text-lg">{project.nombre}</h3>{project.prioritario && <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded uppercase tracking-tighter">⭐ Prioritario</span>}{projectOverdueDays > 0 && <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded uppercase tracking-tighter">⚠️ Atrasado</span>}</div>
                               <p className="text-xs text-slate-500 line-clamp-1">{project.descripcion || 'Sin descripci  n'}</p>
                               <div className="flex items-center gap-1 mt-1 text-[10px] font-bold text-slate-400 uppercase"><UserIcon size={10} /> Líder: <span className="text-indigo-500">{liderName}</span></div>
                             </div>
@@ -2346,13 +2403,15 @@ case 'responsable':
                                       const completedSubtasks = t.subtasks?.filter((st: any) => st.completada).length || 0;
                                       const canView = canViewSubtasks(String(t.responsable));
                                       const canToggle = canToggleSubtasks(String(t.responsable));
+                                      const isTaskLocked = t.estado === 'Completado' || t.estado === 'Cancelado';
+                                      const canEditTask = !!(currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked));
 
                                       return (
                                         <div key={t.id} className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-200 transition-colors group mb-2">
                                           <div className="flex items-center justify-between p-3">
                                             <div className="flex flex-col gap-1 w-1/3 min-w-[200px]"><span className="text-sm font-bold text-slate-800 line-clamp-1" title={t.actividad}>{t.actividad}</span><div className="flex items-center gap-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${getPriorityColor(t.prioridad)}`}>{getPriorityLabel(t.prioridad)}</span><span className={`text-[10px] font-bold ${tOverdue > 0 ? 'text-red-500' : 'text-slate-400'}`}>{t.fecha_fin} {tOverdue > 0 && '??'}</span></div></div>
                                             <div className="flex-1 px-4 flex items-center gap-3 justify-center"><div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(t.porcentaje_avance)}`} style={{ width: `${t.porcentaje_avance}%` }} /></div><span className={`text-[10px] font-bold w-6 text-right ${getProgressTextColor(t.porcentaje_avance)}`}>{t.porcentaje_avance}%</span></div>
-                                            <div className="flex items-center gap-4 justify-end w-1/3"><span className={`text-[9px] font-black px-2 py-1 rounded uppercase ${getStatusColor(t.estado)}`}>{t.estado}</span><div className="flex items-center gap-1.5" title={String(t.responsable)}><div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] uppercase border border-slate-200">{String(t.responsable || 'U').charAt(0)}</div><span className="text-[10px] font-bold text-slate-500 uppercase hidden sm:block w-16 truncate">{String(t.responsable || 'Usuario').split(' ')[0]}</span></div><button onClick={() => { setSelectedTask(t); setDetailsTab('subtasks'); setIsDetailsModalOpen(true); fetchTaskDetails(t.id!); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Ver Detalles"><Eye size={16} /></button></div>
+                                            <div className="flex items-center gap-4 justify-end w-1/3"><span className={`text-[9px] font-black px-2 py-1 rounded uppercase ${getStatusColor(t.estado)}`}>{t.estado}</span><div className="flex items-center gap-1.5" title={String(t.responsable)}><div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] uppercase border border-slate-200">{String(t.responsable || 'U').charAt(0)}</div><span className="text-[10px] font-bold text-slate-500 uppercase hidden sm:block w-16 truncate">{String(t.responsable || 'Usuario').split(' ')[0]}</span></div><div className="flex items-center gap-1">{canEditTask && (<button onClick={(e) => { e.stopPropagation(); setEditingItem(t); setEditingTaskFromProject(true); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Editar Tarea"><Edit2 size={16} /></button>)}<button onClick={() => { setSelectedTask(t); setDetailsTab('subtasks'); setIsDetailsModalOpen(true); fetchTaskDetails(t.id!); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Ver Detalles"><Eye size={16} /></button></div></div>
                                           </div>
                                           {totalSubtasks > 0 && canView && (
                                             <>
@@ -2382,15 +2441,15 @@ case 'responsable':
 
         {currentView === 'control' && (
             <>
-              <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 lg:p-6 mb-6 shadow-sm">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                  <div className="min-w-0">
                     <h3 className="text-lg font-bold text-slate-900">Filtro Maestro por área</h3>
                     <p className="text-sm text-slate-500">Selecciona un  área para visualizar todas sus actividades</p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <Filter className="text-slate-400" size={20} />
-                    <select className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 min-w-[240px]" value={controlAreaId || ''} onChange={(e) => setControlAreaId(e.target.value ? parseInt(e.target.value) : null)}>
+                  <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+                    <Filter className="text-slate-400 shrink-0" size={20} />
+                    <select className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:min-w-[240px]" value={controlAreaId || ''} onChange={(e) => setControlAreaId(e.target.value ? parseInt(e.target.value) : null)}>
                       <option value="">Todas las  áreas Autorizadas</option>
                       {areas.filter(a => {
                         if (currentUser?.is_admin) return true;
@@ -2401,32 +2460,31 @@ case 'responsable':
                   </div>
                 </div>
 
-   
-			  
-			  <div className="flex flex-col md:flex-row gap-4 mt-6 pt-6 border-t border-slate-100">
+                <div className="flex flex-col lg:flex-row gap-4 mt-6 pt-6 border-t border-slate-100">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                     <input type="text" placeholder="Buscar actividad en supervisión..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                   </div>
                   
-                  {/* --- NUEVO FILTRO POR RESPONSABLE --- */}
-                  <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-full md:w-56" value={controlResponsableFilter} onChange={(e) => setControlResponsableFilter(e.target.value)}>
-                    <option value="All">Todos los Responsables</option>
-                    {Array.from(new Set(controlTasks.flatMap(t => t.responsable ? String(t.responsable).split(',').map(r => r.trim()) : []))).filter(Boolean).sort().map(resp => (
-                       <option key={resp} value={resp}>{resp}</option>
-                    ))}
-                  </select>
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-full sm:w-56" value={controlResponsableFilter} onChange={(e) => setControlResponsableFilter(e.target.value)}>
+                      <option value="All">Todos los Responsables</option>
+                      {Array.from(new Set(controlTasks.flatMap(t => t.responsable ? String(t.responsable).split(',').map(r => r.trim()) : []))).filter(Boolean).sort().map(resp => (
+                         <option key={resp} value={resp}>{resp}</option>
+                      ))}
+                    </select>
 
-                  <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-full md:w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                    <option value="All">Todos los Estados</option>
-                    <option value="Planeado">Planeado</option>
-                    <option value="En curso">En curso</option>
-                    <option value="En espera">En espera</option>
-                    <option value="Atrasadas">Atrasadas 🚨</option>
-                    <option value="Completado">Completado</option>
-                  </select>
+                    <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-full sm:w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                      <option value="All">Todos los Estados</option>
+                      <option value="Planeado">Planeado</option>
+                      <option value="En curso">En curso</option>
+                      <option value="En espera">En espera</option>
+                      <option value="Atrasadas">Atrasadas 🚨</option>
+                      <option value="Completado">Completado</option>
+                    </select>
+                  </div>
                 </div>
-             </div>
+              </div>
 			  
 			  
 			  
@@ -2543,16 +2601,16 @@ case 'responsable':
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setIsModalOpen(false); setEditingTaskFromProject(false); }} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden">
               <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="text-lg font-bold text-slate-900">{editingItem ? 'Editar' : 'Nuevo'} {(currentView === 'tasks' || currentView === 'control') ? 'Tarea' : currentView === 'users' ? 'Usuario' : currentView === 'projects' ? 'Proyecto' : '  rea'}</h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                <h3 className="text-lg font-bold text-slate-900">{editingItem ? 'Editar' : 'Nuevo'} {(currentView === 'tasks' || currentView === 'control' || editingTaskFromProject) ? 'Tarea' : currentView === 'users' ? 'Usuario' : currentView === 'projects' ? 'Proyecto' : 'Área'}</h3>
+                <button onClick={() => { setIsModalOpen(false); setEditingTaskFromProject(false); }} className="p-2 text-slate-400 hover:text-slate-600"><X size={20} /></button>
               </div>
 
-              <form onSubmit={(currentView === 'tasks' || currentView === 'control') ? handleTaskSubmit : currentView === 'users' ? handleUserSubmit : currentView === 'projects' ? handleProjectSubmit : handleAreaSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto bg-slate-50">
-                
-                {(currentView === 'tasks' || currentView === 'control') && (
+              <form onSubmit={(currentView === 'tasks' || currentView === 'control' || editingTaskFromProject) ? handleTaskSubmit : currentView === 'users' ? handleUserSubmit : currentView === 'projects' ? handleProjectSubmit : handleAreaSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto bg-slate-50">
+
+                {(currentView === 'tasks' || currentView === 'control' || editingTaskFromProject) && (
                   <div className="space-y-6">
                     <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                       <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">1. Identificación Básica</h4>
@@ -2761,7 +2819,7 @@ case 'responsable':
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Tareas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="can_create_tasks" defaultChecked={editingItem?.can_create_tasks} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="can_edit_tasks" defaultChecked={editingItem?.can_edit_tasks} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="can_delete_tasks" defaultChecked={editingItem?.can_delete_tasks} className="rounded text-blue-600" /> Eliminar</label></div>
-                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Subtareas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_view" defaultChecked={editingItem?.perm_subtasks_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_create" defaultChecked={editingItem?.perm_subtasks_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_edit" defaultChecked={editingItem?.perm_subtasks_edit} className="rounded text-blue-600" /> Marcar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_delete" defaultChecked={editingItem?.perm_subtasks_delete} className="rounded text-blue-600" /> Eliminar</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Subtareas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_view" defaultChecked={editingItem?.perm_subtasks_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_create" defaultChecked={editingItem?.perm_subtasks_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_edit" defaultChecked={editingItem?.perm_subtasks_edit} className="rounded text-blue-600" /> Marcar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_edit_title" defaultChecked={editingItem?.perm_subtasks_edit_title} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_delete" defaultChecked={editingItem?.perm_subtasks_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Proyectos</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_view" defaultChecked={editingItem?.perm_projects_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_create" defaultChecked={editingItem?.perm_projects_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_edit" defaultChecked={editingItem?.perm_projects_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_delete" defaultChecked={editingItem?.perm_projects_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Reportes</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_reports_view" defaultChecked={editingItem?.perm_reports_view} className="rounded text-indigo-600" /> Ver Reportes</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Usuarios</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_view" defaultChecked={editingItem?.perm_users_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_create" defaultChecked={editingItem?.perm_users_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_edit" defaultChecked={editingItem?.perm_users_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_delete" defaultChecked={editingItem?.perm_users_delete} className="rounded text-blue-600" /> Eliminar</label></div>
@@ -2887,23 +2945,35 @@ case 'responsable':
                                      {subtaskItems.map((st: any) => {
                                         const canToggle = canToggleSubtasks(String(selectedTask.responsable));
                                         const canDelete = canDeleteSubtasks();
+                                        const canEdit = canEditSubtaskContent(String(selectedTask.responsable), selectedTask.created_by_id);
                                         const today = new Date(); today.setHours(0,0,0,0);
                                         const isOverdue = st.fecha_compromiso && !st.completada && new Date(st.fecha_compromiso) < today;
                                         return (
                                            <Reorder.Item key={st.id} value={st} className={`flex items-center gap-2 p-3 border rounded-xl transition-colors cursor-grab active:cursor-grabbing active:shadow-md active:z-10 ${isOverdue ? 'border-red-200 bg-red-50/60' : 'border-slate-200 bg-slate-50 hover:bg-slate-100'}`}>
                                               <GripVertical size={15} className="text-slate-300 shrink-0 pointer-events-none" />
                                               <button disabled={!canToggle} onClick={() => canToggle && handleToggleSubtask(st.id, st.completada)} className={`transition-colors shrink-0 ${st.completada ? 'text-emerald-500' : 'text-slate-300'} ${canToggle ? 'hover:text-blue-500 cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>{st.completada ? <CheckSquare size={20} /> : <Square size={20} />}</button>
-                                              <span className={`flex-1 text-sm min-w-0 ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-bold'}`}>{st.titulo}</span>
-                                              {editingSubtaskDateId === st.id ? (
-                                                 <input type="date" defaultValue={st.fecha_compromiso || ''} className="text-xs px-2 py-1 border border-indigo-300 rounded-lg outline-none focus:border-indigo-500 bg-white" autoFocus onBlur={e => handleUpdateSubtaskDate(st.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleUpdateSubtaskDate(st.id, (e.target as HTMLInputElement).value); if (e.key === 'Escape') setEditingSubtaskDateId(null); }} />
+                                              {editingSubtaskTitleId === st.id ? (
+                                                <input type="text" defaultValue={st.titulo} className="flex-1 text-sm px-2 py-1 border border-indigo-300 rounded-lg outline-none focus:border-indigo-500 bg-white font-bold min-w-0" autoFocus onBlur={e => handleUpdateSubtaskTitle(st.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleUpdateSubtaskTitle(st.id, (e.target as HTMLInputElement).value); if (e.key === 'Escape') setEditingSubtaskTitleId(null); }} />
                                               ) : (
-                                                 <button onClick={() => setEditingSubtaskDateId(st.id)} title="Editar fecha de compromiso" className={`text-xs px-2 py-1 rounded-lg flex items-center gap-1 shrink-0 transition-colors ${st.fecha_compromiso ? (isOverdue ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200') : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'}`}>
+                                                <span className={`flex-1 text-sm min-w-0 ${st.completada ? 'text-slate-400 line-through' : 'text-slate-700 font-bold'}`}>{st.titulo}</span>
+                                              )}
+                                              {canEdit && editingSubtaskTitleId !== st.id && (
+                                                <button onClick={() => setEditingSubtaskTitleId(st.id)} className="p-1 text-slate-300 hover:text-indigo-500 transition-colors shrink-0" title="Editar título"><Edit2 size={14}/></button>
+                                              )}
+                                              {canEdit ? (
+                                                editingSubtaskDateId === st.id ? (
+                                                  <input type="date" defaultValue={st.fecha_compromiso || ''} className="text-xs px-2 py-1 border border-indigo-300 rounded-lg outline-none focus:border-indigo-500 bg-white" autoFocus onBlur={e => handleUpdateSubtaskDate(st.id, e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleUpdateSubtaskDate(st.id, (e.target as HTMLInputElement).value); if (e.key === 'Escape') setEditingSubtaskDateId(null); }} />
+                                                ) : (
+                                                  <button onClick={() => setEditingSubtaskDateId(st.id)} title="Editar fecha de compromiso" className={`text-xs px-2 py-1 rounded-lg flex items-center gap-1 shrink-0 transition-colors ${st.fecha_compromiso ? (isOverdue ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200') : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100'}`}>
                                                     <Calendar size={12} />
                                                     <span>{st.fecha_compromiso || 'Fecha'}</span>
-                                                 </button>
-                                              )}
+                                                  </button>
+                                                )
+                                              ) : st.fecha_compromiso ? (
+                                                <span className={`text-xs px-2 py-1 rounded-lg flex items-center gap-1 shrink-0 ${isOverdue ? 'bg-red-100 text-red-600' : 'bg-slate-100 text-slate-500'}`}><Calendar size={12} /><span>{st.fecha_compromiso}</span></span>
+                                              ) : null}
                                               {canDelete && <button onClick={() => handleDeleteSubtask(st.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded-md transition-colors shrink-0" title="Eliminar"><Trash2 size={16}/></button>}
-                                              {!canDelete && !canToggle && <Lock size={14} className="text-slate-300 shrink-0" />}
+                                              {!canDelete && !canToggle && !canEdit && <Lock size={14} className="text-slate-300 shrink-0" />}
                                            </Reorder.Item>
                                         );
                                      })}

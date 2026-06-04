@@ -74,6 +74,28 @@ const actualizarPorcentajeTarea = async (taskId) => {
   }
 };
 
+const normalizeText = (text) =>
+  text ? text.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, ' ').trim().toUpperCase() : '';
+
+const checkSubtaskEditAccess = async (subtaskId, userId) => {
+  const subtask = await prisma.subtask.findUnique({ where: { id: parseInt(subtaskId) } });
+  if (!subtask) return { allowed: false, error: 'Subtarea no encontrada', status: 404 };
+
+  const [task, user] = await Promise.all([
+    prisma.task.findUnique({ where: { id: subtask.task_id } }),
+    prisma.user.findUnique({ where: { id: userId } })
+  ]);
+  if (!task || !user) return { allowed: false, error: 'Recurso no encontrado', status: 404 };
+
+  if (user.is_admin || user.perm_subtasks_edit_title) return { allowed: true, subtask };
+  if (task.created_by_id === userId) return { allowed: true, subtask };
+
+  const userName = normalizeText(`${user.nombre || ''} ${user.apellido || ''}`);
+  if (normalizeText(task.responsable || '').includes(userName)) return { allowed: true, subtask };
+
+  return { allowed: false, error: 'No tienes permiso para editar esta subtarea', status: 403 };
+};
+
 const taskController = {
 /*   getAll: async (req, res) => {
     try {
@@ -639,6 +661,8 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
     try {
       const { subtaskId } = req.params;
       const { fecha_compromiso } = req.body;
+      const access = await checkSubtaskEditAccess(subtaskId, req.userId);
+      if (!access.allowed) return res.status(access.status).json({ error: access.error });
       const updated = await prisma.subtask.update({
         where: { id: parseInt(subtaskId) },
         data: { fecha_compromiso: fecha_compromiso || null }
@@ -646,6 +670,23 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Error al actualizar la fecha de la subtarea" });
+    }
+  },
+
+  updateSubtaskTitulo: async (req, res) => {
+    try {
+      const { subtaskId } = req.params;
+      const { titulo } = req.body;
+      if (!titulo?.trim()) return res.status(400).json({ error: "El título no puede estar vacío" });
+      const access = await checkSubtaskEditAccess(subtaskId, req.userId);
+      if (!access.allowed) return res.status(access.status).json({ error: access.error });
+      const updated = await prisma.subtask.update({
+        where: { id: parseInt(subtaskId) },
+        data: { titulo: titulo.trim() }
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Error al actualizar el título de la subtarea" });
     }
   },
 
