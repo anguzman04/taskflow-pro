@@ -52,8 +52,16 @@ El proyecto está activo y en desarrollo continuo. Backend y frontend operativos
 
 ---
 
+### 3. Validación de permisos en backend (endpoints de subtarea)
+- **Problema:** `PATCH /api/tasks/subtasks/:id/titulo` y `PATCH /api/tasks/subtasks/:id/fecha` no validaban permisos — cualquier usuario autenticado podía editar.
+- **Solución:** Helper `checkSubtaskEditAccess(subtaskId, userId)` en `taskController.js`.
+- **Regla:** `is_admin | perm_subtasks_edit_title | created_by_id === userId | responsable (nombre normalizado)` → 403 si ninguna aplica.
+- **Frontend:** `canEditSubtaskContent` actualizada para incluir check de `created_by_id` (tarea pasada como segundo argumento).
+- **Commit:** `c703078` — pusheado a `main`.
+
+---
+
 ## Próximos pasos sugeridos
 
-- Verificar comportamiento en producción del nuevo permiso con usuarios no-admin
-- Considerar agregar edición de título de subtarea también en la vista de lista de tareas (actualmente solo en el modal de detalles)
-- El drift de migraciones Prisma debe resolverse en algún momento con `prisma migrate resolve` o generando una migración base desde el estado actual de la BD
+- Considerar agregar edición inline de título de subtarea en la vista de lista de tareas (actualmente solo en el modal de detalles)
+- El drift de migraciones Prisma debe resolverse con `prisma migrate resolve` o generando una migración base desde el estado actual de la BD
