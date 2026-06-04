@@ -269,13 +269,23 @@ export default function App() {
   const [controlAreaId, setControlAreaId] = useState<number | null>(null);
   //const [controlTasks, setControlTasks] = useState<any[]>([]);
   
-  const [controlResponsableFilter, setControlResponsableFilter] = useState<string>('All'); 
+  const [controlResponsableFilter, setControlResponsableFilter] = useState<string>('All');
   const [controlTasks, setControlTasks] = useState<any[]>([]);
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState('');
+  const [taskDateFrom, setTaskDateFrom] = useState('');
+  const [taskDateTo, setTaskDateTo] = useState('');
+  const [controlPriorityFilter, setControlPriorityFilter] = useState('');
+  const [controlDateFrom, setControlDateFrom] = useState('');
+  const [controlDateTo, setControlDateTo] = useState('');
   
   
   const [expandedAreas, setExpandedAreas] = useState<Set<number>>(new Set());
-  const [expandedProjects, setExpandedProjects] = useState<Set<number>>(new Set()); 
+  const [expandedProjects, setExpandedProjects] = useState<Set<number>>(new Set());
   const [expandedTaskSubtasks, setExpandedTaskSubtasks] = useState<Set<number>>(new Set());
+  const [projectSearchTerm, setProjectSearchTerm] = useState('');
+  const [projectStatusFilter, setProjectStatusFilter] = useState('');
+  const [projectLiderFilter, setProjectLiderFilter] = useState('');
+  const [projectPrioritarioFilter, setProjectPrioritarioFilter] = useState(false);
 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -404,19 +414,23 @@ export default function App() {
       matchesStatus = task.estado === statusFilter;
     }
     
+    const matchesPriority = !taskPriorityFilter || task.prioridad === taskPriorityFilter;
+    const taskFecha = task.fecha_fin ? task.fecha_fin.split('T')[0] : '';
+    const matchesDate = (!taskDateFrom || taskFecha >= taskDateFrom) && (!taskDateTo || taskFecha <= taskDateTo);
+
     if (currentView === 'tasks' && currentUser) {
       const normalizeText = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim().toUpperCase() : '';
       const miNombre = normalizeText(`${currentUser.nombre || ''} ${currentUser.apellido || ''}`);
       const responsableTareaStr = normalizeText(task.responsable || '');
       const isMyTask = responsableTareaStr.includes(miNombre);
 
-      if (taskTab === 'personal') return matchesSearch && matchesStatus && isMyTask;
-      
+      if (taskTab === 'personal') return matchesSearch && matchesStatus && matchesPriority && matchesDate && isMyTask;
+
       if (taskTab === 'team') {
-        if (currentUser.is_admin) return matchesSearch && matchesStatus;
+        if (currentUser.is_admin) return matchesSearch && matchesStatus && matchesPriority && matchesDate;
         let soyJefe = false;
         const responsablesArray = responsableTareaStr.split(',').map(r => r.trim());
-        
+
         for (const respName of responsablesArray) {
            const responsableObj = allUsers.find(u => normalizeText(`${u.nombre || ''} ${u.apellido || ''}`) === respName);
            if (responsableObj && responsableObj.area_id && areas.length > 0) {
@@ -426,11 +440,11 @@ export default function App() {
              if(soyJefeDirecto || soyJefePadre) { soyJefe = true; break; }
            }
         }
-        if (soyJefe || isMyTask) return matchesSearch && matchesStatus;
+        if (soyJefe || isMyTask) return matchesSearch && matchesStatus && matchesPriority && matchesDate;
         return false;
       }
     }
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesPriority && matchesDate;
   }).sort((a, b) => {
       const ordA = a.orden_ejecucion; const ordB = b.orden_ejecucion;
       if (ordA != null && ordB != null) return ordA - ordB;
@@ -513,8 +527,14 @@ const filteredControlTasks = controlTasks.filter(task => {
       matchesResponsable = responsablesArray.includes(controlResponsableFilter);
     }
 
-    // Exigimos que la tarea cumpla TODOS los filtros activos
-    return matchesSearch && matchesStatus && matchesArea && matchesResponsable;
+    // 5. Filtro por Prioridad
+    const matchesControlPriority = !controlPriorityFilter || task.prioridad === controlPriorityFilter;
+
+    // 6. Filtro por Fecha de compromiso
+    const ctrlFecha = task.fecha_fin ? task.fecha_fin.split('T')[0] : '';
+    const matchesControlDate = (!controlDateFrom || ctrlFecha >= controlDateFrom) && (!controlDateTo || ctrlFecha <= controlDateTo);
+
+    return matchesSearch && matchesStatus && matchesArea && matchesResponsable && matchesControlPriority && matchesControlDate;
   }).sort((a, b) => {
       const ordA = a.orden_ejecucion; const ordB = b.orden_ejecucion;
       if (ordA != null && ordB != null) return ordA - ordB;
@@ -1290,55 +1310,292 @@ const handleDeleteEvidence = async (evidenceId: number) => {
   
   
 
-  const exportToExcelData = async (tasksToExport: any[], filenamePrefix: string) => {
+  const exportToExcelData = async (tasksToExport: any[], filenamePrefix: string, filterDesc?: string) => {
     if (tasksToExport.length === 0) return alert("No hay datos para exportar.");
+
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet('Reporte');
+    workbook.creator = `${currentUser?.nombre || ''} ${currentUser?.apellido || ''}`.trim() || 'TaskFlow Pro';
+    workbook.created = new Date();
 
-    worksheet.columns = [
-      { header: 'ID', key: 'id', width: 8 }, { header: 'Actividad', key: 'actividad', width: 45 },
-      { header: 'Ejecutores (Responsables)', key: 'responsable', width: 35 }, { header: '  Área / Origen', key: 'area_origen', width: 25 },
-      { header: 'Proyecto / Iniciativa', key: 'proyecto', width: 25 }, { header: 'Gerente/Jefe Responsable', key: 'gerente', width: 25 },
-      { header: 'Tipo', key: 'tipo', width: 20 }, { header: 'Estado', key: 'estado', width: 15 },
-      { header: 'Fecha de Compromiso', key: 'fechaFin', width: 18 }, { header: 'Tematica', key: 'tematica', width: 25 },
-      { header: 'Prioridad', key: 'prioridad', width: 15 }, { header: '% actual', key: 'avance', width: 12 },
-      { header: 'Compromiso semanal', key: 'compromiso_semanal', width: 45 }, { header: 'Dependencia', key: 'dependencia', width: 25 },
-      { header: 'Requiere Inversión', key: 'inversion', width: 18 }, { header: 'Alineación estrategica', key: 'alineacion', width: 35 },
-      { header: 'Impacto financiero / Operativo', key: 'impacto', width: 25 }, { header: 'Viabilidad Tecnica', key: 'viabilidad', width: 25 },
-      { header: 'Calificacion', key: 'calificacion', width: 15 }, { header: 'Orden Sugerido/Manual', key: 'orden_ejecucion', width: 25 }, 
-      { header: 'Observaciones', key: 'observaciones', width: 60 }
+    const fill = (argb: string) => ({ type: 'pattern' as const, pattern: 'solid' as const, fgColor: { argb } });
+    const bdr = (argb = 'FFe2e8f0') => ({ style: 'thin' as const, color: { argb } });
+    const cellBorder = { top: bdr(), left: bdr(), bottom: bdr(), right: bdr() };
+
+    const estadoBg: Record<string, string> = {
+      'Completado': 'FFd1fae5', 'En curso': 'FFdbeafe', 'En espera': 'FFfef9c3',
+      'Cancelado': 'FFe2e8f0', 'Planeado': 'FFf1f5f9',
+    };
+    const estadoFg: Record<string, string> = {
+      'Completado': 'FF065f46', 'En curso': 'FF1e40af', 'En espera': 'FF92400e',
+      'Cancelado': 'FF475569', 'Planeado': 'FF334155',
+    };
+    const avanceBg = (p: number) => p >= 76 ? 'FFbbf7d0' : p >= 51 ? 'FFbfdbfe' : p >= 26 ? 'FFfde68a' : 'FFfecaca';
+
+    // ── SHEET 1: LISTADO DE TAREAS ──────────────────────────────────────────
+    const ws1 = workbook.addWorksheet('Listado de Tareas', {
+      pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1 },
+    });
+    ws1.views = [{ state: 'frozen', ySplit: 4 }];
+
+    const COLS = [
+      { key: 'id',                 width: 7,  header: 'ID' },
+      { key: 'actividad',          width: 45, header: 'Actividad' },
+      { key: 'responsable',        width: 35, header: 'Responsable(s)' },
+      { key: 'area_origen',        width: 22, header: 'Área / Origen' },
+      { key: 'proyecto',           width: 25, header: 'Proyecto / Iniciativa' },
+      { key: 'gerente',            width: 22, header: 'Gerente Responsable' },
+      { key: 'tipo',               width: 18, header: 'Tipo' },
+      { key: 'estado',             width: 14, header: 'Estado' },
+      { key: 'fechaFin',           width: 16, header: 'Fecha Compromiso' },
+      { key: 'diasAtraso',         width: 14, header: 'Días de Atraso' },
+      { key: 'tematica',           width: 22, header: 'Temática' },
+      { key: 'prioridad',          width: 13, header: 'Prioridad' },
+      { key: 'avance',             width: 11, header: '% Avance' },
+      { key: 'subtareas',          width: 13, header: 'Subtareas' },
+      { key: 'compromiso_semanal', width: 40, header: 'Compromiso Semanal' },
+      { key: 'dependencia',        width: 22, header: 'Dependencia' },
+      { key: 'inversion',          width: 15, header: 'Requiere Inversión' },
+      { key: 'alineacion',         width: 30, header: 'Alineación Estratégica' },
+      { key: 'impacto',            width: 22, header: 'Impacto' },
+      { key: 'viabilidad',         width: 22, header: 'Viabilidad Técnica' },
+      { key: 'calificacion',       width: 13, header: 'Calificación' },
+      { key: 'orden_ejecucion',    width: 10, header: 'Orden' },
+      { key: 'observaciones',      width: 50, header: 'Observaciones' },
     ];
+    const NCOLS = COLS.length;
+    const LAST_COL = String.fromCharCode(64 + NCOLS);
+    ws1.columns = COLS.map(c => ({ key: c.key, width: c.width }));
 
+    // Fila 1: Título
+    ws1.mergeCells(`A1:${LAST_COL}1`);
+    const r1 = ws1.getCell('A1');
+    r1.value = `REPORTE DE ACTIVIDADES — ${new Date().toLocaleDateString('es-PA', { year: 'numeric', month: 'long', day: 'numeric' })} — Exportado por: ${workbook.creator}`;
+    r1.fill = fill('FF0f172a'); r1.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 12 };
+    r1.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws1.getRow(1).height = 30;
+
+    // Fila 2: Filtros
+    ws1.mergeCells(`A2:${LAST_COL}2`);
+    const r2 = ws1.getCell('A2');
+    r2.value = filterDesc ? `Filtros: ${filterDesc}  |  ${tasksToExport.length} registros` : `Sin filtros aplicados  |  ${tasksToExport.length} registros`;
+    r2.fill = fill('FF1e293b'); r2.font = { color: { argb: 'FFcbd5e1' }, size: 9, italic: true };
+    r2.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws1.getRow(2).height = 20;
+
+    // Fila 3: Separador
+    ws1.getRow(3).height = 5;
+
+    // Fila 4: Encabezados
+    const hRow = ws1.getRow(4);
+    hRow.height = 32;
+    COLS.forEach((col, i) => {
+      const cell = hRow.getCell(i + 1);
+      cell.value = col.header;
+      cell.fill = fill('FF1e293b');
+      cell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 10 };
+      cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
+      cell.border = { top: bdr('FF0f172a'), left: bdr('FF0f172a'), bottom: { style: 'medium', color: { argb: 'FF0f172a' } }, right: bdr('FF0f172a') };
+    });
+
+    // Filas de datos
     tasksToExport.forEach((task, idx) => {
-      const projectName = projects.find(p => p.id === task.proyecto_id)?.nombre || 'Sin Proyecto';
-      const areaName = areas.find(a => a.id === task.area_origen_id)?.nombre || 'Sin Área';
-      worksheet.addRow({
-        id: task.id, actividad: task.actividad, responsable: task.responsable, area_origen: areaName,
-        proyecto: projectName, gerente: task.gerente_responsable || 'Sin Asignar', tipo: task.tipo || '-',
-        //estado: task.estado, fechaFin: task.fecha_fin, tematica: task.tematica || '-', prioridad: getPriorityLabel(task.prioridad),
-       // Cambia la línea de fechaFin a:
-        estado: task.estado, fechaFin: task.fecha_fin ? String(task.fecha_fin).split('T')[0] : '-', tematica: task.tematica || '-', prioridad: getPriorityLabel(task.prioridad),
-     	avance: `${task.porcentaje_avance}%`, compromiso_semanal: task.compromiso_semanal || '-', dependencia: task.prerequisito || '-',
-        inversion: task.requiere_inversion ? 'S  ' : 'No', alineacion: task.alineacion_estrategica || '-', impacto: task.impacto || '-',
-        viabilidad: task.viabilidad_tecnica || '-', calificacion: task.calificacion || '-', orden_ejecucion: task.orden_ejecucion || `Sugerido #${idx + 1}`,
-        observaciones: task.observacion || '-'
+      const overdueDays = getDaysOverdue(task.fecha_fin, task.estado);
+      const isOverdue = overdueDays > 0;
+      const rowBg = isOverdue ? 'FFfff1f2' : idx % 2 === 0 ? 'FFfafafa' : 'FFFFFFFF';
+      const fechaDate = task.fecha_fin ? new Date(String(task.fecha_fin).split('T')[0] + 'T00:00:00') : null;
+      const totalSub = task.subtasks?.length || 0;
+      const compSub = task.subtasks?.filter((s: any) => s.completada).length || 0;
+      const avancePct = Number(task.porcentaje_avance) || 0;
+
+      const row = ws1.addRow({
+        id: task.id,
+        actividad: task.actividad || '-',
+        responsable: task.responsable || '-',
+        area_origen: areas.find(a => a.id === task.area_origen_id)?.nombre || 'Sin Área',
+        proyecto: projects.find(p => p.id === task.proyecto_id)?.nombre || 'Sin Proyecto',
+        gerente: task.gerente_responsable || 'Sin Asignar',
+        tipo: task.tipo || '-',
+        estado: task.estado,
+        fechaFin: fechaDate,
+        diasAtraso: isOverdue ? overdueDays : task.estado === 'Completado' ? 'Completada' : 'Al día',
+        tematica: task.tematica || '-',
+        prioridad: getPriorityLabel(task.prioridad),
+        avance: avancePct / 100,
+        subtareas: totalSub > 0 ? `${compSub}/${totalSub}` : '-',
+        compromiso_semanal: task.compromiso_semanal || '-',
+        dependencia: task.prerequisito || '-',
+        inversion: task.requiere_inversion ? 'Sí' : 'No',
+        alineacion: task.alineacion_estrategica || '-',
+        impacto: task.impacto || '-',
+        viabilidad: task.viabilidad_tecnica || '-',
+        calificacion: task.calificacion || '-',
+        orden_ejecucion: task.orden_ejecucion ?? `Sug. #${idx + 1}`,
+        observaciones: task.observacion || '-',
       });
+      row.height = 20;
+
+      // Estilo base: zebra + borde
+      row.eachCell({ includeEmpty: true }, cell => {
+        cell.fill = fill(rowBg);
+        cell.font = { size: 10, color: { argb: isOverdue ? 'FF9f1239' : 'FF334155' } };
+        cell.alignment = { vertical: 'middle' };
+        cell.border = cellBorder;
+      });
+
+      // Estado: color por valor
+      const eCell = row.getCell('estado');
+      eCell.fill = fill(estadoBg[task.estado] || 'FFf1f5f9');
+      eCell.font = { bold: true, size: 10, color: { argb: estadoFg[task.estado] || 'FF334155' } };
+      eCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      // % Avance: número real + escala de color
+      const aCell = row.getCell('avance');
+      aCell.numFmt = '0%';
+      aCell.fill = fill(avanceBg(avancePct));
+      aCell.font = { bold: true, size: 10, color: { argb: 'FF334155' } };
+      aCell.alignment = { horizontal: 'center', vertical: 'middle' };
+
+      // Fecha: formato fecha real
+      if (fechaDate) {
+        const fCell = row.getCell('fechaFin');
+        fCell.numFmt = 'DD/MM/YYYY';
+        fCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      }
+
+      // Días de atraso: color
+      const dCell = row.getCell('diasAtraso');
+      dCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      if (isOverdue) {
+        dCell.fill = fill('FFfecaca');
+        dCell.font = { bold: true, size: 10, color: { argb: 'FF991b1b' } };
+      } else if (task.estado === 'Completado') {
+        dCell.font = { size: 10, color: { argb: 'FF065f46' } };
+      }
     });
 
-    const headerRow = worksheet.getRow(1);
-    headerRow.eachCell(cell => { 
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0ea5e9' } }; 
-      cell.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 11 }; 
-      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }; 
+    ws1.autoFilter = `A4:${LAST_COL}4`;
+
+    // ── SHEET 2: RESUMEN POR ÁREA ───────────────────────────────────────────
+    const ws2 = workbook.addWorksheet('Resumen por Área');
+    ws2.columns = [{ width: 30 }, { width: 10 }, { width: 14 }, { width: 12 }, { width: 12 }, { width: 12 }, { width: 16 }, { width: 16 }];
+
+    ws2.mergeCells('A1:H1');
+    const ws2t = ws2.getCell('A1');
+    ws2t.value = 'RESUMEN POR ÁREA'; ws2t.fill = fill('FF0f172a');
+    ws2t.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 12 };
+    ws2t.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws2.getRow(1).height = 28;
+
+    const aHdrs = ['Área', 'Total', 'Completadas', 'En Curso', 'En Espera', 'Atrasadas', '% Completadas', 'Avance Promedio'];
+    const hRow2 = ws2.getRow(2);
+    hRow2.height = 26;
+    aHdrs.forEach((h, i) => {
+      const c = hRow2.getCell(i + 1);
+      c.value = h; c.fill = fill('FF1e293b');
+      c.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 10 };
+      c.alignment = { horizontal: 'center', vertical: 'middle' }; c.border = cellBorder;
     });
-    headerRow.height = 30;
+
+    let tot = 0, totComp = 0, totCurso = 0, totEspera = 0, totAtr = 0;
+    areas.forEach((area, idx) => {
+      const at = tasksToExport.filter(t => t.area_origen_id === area.id);
+      if (!at.length) return;
+      const comp = at.filter(t => t.estado === 'Completado').length;
+      const curso = at.filter(t => t.estado === 'En curso').length;
+      const espera = at.filter(t => t.estado === 'En espera').length;
+      const atr = at.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length;
+      tot += at.length; totComp += comp; totCurso += curso; totEspera += espera; totAtr += atr;
+      const avgPct = at.reduce((s, t) => s + (Number(t.porcentaje_avance) || 0), 0) / at.length;
+      const row = ws2.addRow([area.nombre, at.length, comp, curso, espera, atr, comp / at.length, avgPct / 100]);
+      row.height = 20;
+      const bg = idx % 2 === 0 ? 'FFfafafa' : 'FFFFFFFF';
+      row.eachCell({ includeEmpty: true }, (c, ci) => {
+        c.fill = fill(bg); c.font = { size: 10 };
+        c.alignment = { horizontal: ci === 1 ? 'left' : 'center', vertical: 'middle' }; c.border = cellBorder;
+      });
+      row.getCell(7).numFmt = '0%'; row.getCell(8).numFmt = '0%';
+      if (atr > 0) { row.getCell(6).fill = fill('FFfecaca'); row.getCell(6).font = { bold: true, size: 10, color: { argb: 'FF991b1b' } }; }
+    });
+
+    const globalAvg = tasksToExport.length > 0 ? tasksToExport.reduce((s, t) => s + (Number(t.porcentaje_avance) || 0), 0) / tasksToExport.length : 0;
+    const tRow2 = ws2.addRow(['TOTALES', tot, totComp, totCurso, totEspera, totAtr, tot > 0 ? totComp / tot : 0, globalAvg / 100]);
+    tRow2.height = 22;
+    tRow2.eachCell({ includeEmpty: true }, (c, ci) => {
+      c.fill = fill('FFe2e8f0'); c.font = { bold: true, size: 10 };
+      c.alignment = { horizontal: ci === 1 ? 'left' : 'center', vertical: 'middle' };
+      c.border = { ...cellBorder, top: { style: 'medium', color: { argb: 'FF334155' } } };
+    });
+    tRow2.getCell(7).numFmt = '0%'; tRow2.getCell(8).numFmt = '0%';
+
+    // ── SHEET 3: RESUMEN POR RESPONSABLE ───────────────────────────────────
+    const ws3 = workbook.addWorksheet('Resumen por Responsable');
+    ws3.columns = [{ width: 35 }, { width: 10 }, { width: 14 }, { width: 12 }, { width: 12 }, { width: 16 }];
+
+    ws3.mergeCells('A1:F1');
+    const ws3t = ws3.getCell('A1');
+    ws3t.value = 'RESUMEN POR RESPONSABLE'; ws3t.fill = fill('FF0f172a');
+    ws3t.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 12 };
+    ws3t.alignment = { horizontal: 'center', vertical: 'middle' };
+    ws3.getRow(1).height = 28;
+
+    const rHdrs = ['Responsable', 'Total', 'Completadas', 'Pendientes', 'Atrasadas', 'Avance Promedio'];
+    const hRow3 = ws3.getRow(2);
+    hRow3.height = 26;
+    rHdrs.forEach((h, i) => {
+      const c = hRow3.getCell(i + 1);
+      c.value = h; c.fill = fill('FF1e293b');
+      c.font = { color: { argb: 'FFFFFFFF' }, bold: true, size: 10 };
+      c.alignment = { horizontal: 'center', vertical: 'middle' }; c.border = cellBorder;
+    });
+
+    const userStatsAll = allUsers.map(u => {
+      const name = `${u.nombre} ${u.apellido}`;
+      const ut = tasksToExport.filter(t => t.responsable && String(t.responsable).includes(name));
+      if (!ut.length) return null;
+      return {
+        name, total: ut.length,
+        completed: ut.filter(t => t.estado === 'Completado').length,
+        pending: ut.filter(t => t.estado !== 'Completado' && t.estado !== 'Cancelado').length,
+        overdue: ut.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length,
+        avg: ut.reduce((s, t) => s + (Number(t.porcentaje_avance) || 0), 0) / ut.length,
+      };
+    }).filter(Boolean).sort((a: any, b: any) => b.total - a.total) as any[];
+
+    userStatsAll.forEach((u, idx) => {
+      const row = ws3.addRow([u.name, u.total, u.completed, u.pending, u.overdue, u.avg / 100]);
+      row.height = 20;
+      const bg = idx % 2 === 0 ? 'FFfafafa' : 'FFFFFFFF';
+      row.eachCell({ includeEmpty: true }, (c, ci) => {
+        c.fill = fill(bg); c.font = { size: 10 };
+        c.alignment = { horizontal: ci === 1 ? 'left' : 'center', vertical: 'middle' }; c.border = cellBorder;
+      });
+      row.getCell(6).numFmt = '0%';
+      if (u.overdue > 0) { row.getCell(5).fill = fill('FFfecaca'); row.getCell(5).font = { bold: true, size: 10, color: { argb: 'FF991b1b' } }; }
+    });
 
     const buffer = await workbook.xlsx.writeBuffer();
     saveAs(new Blob([buffer]), `${filenamePrefix}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const handleExportExcel = () => { exportToExcelData(currentView === 'tasks' ? filteredTasks : filteredControlTasks, 'Reporte_General'); };
-  const handleExportFilteredReport = () => { exportToExcelData(filteredReportTasks, 'Reporte_Filtrado'); };
+  const handleExportExcel = () => {
+    const tasksData = currentView === 'tasks' ? filteredTasks : filteredControlTasks;
+    const parts: string[] = [];
+    if (searchTerm) parts.push(`Búsqueda: "${searchTerm}"`);
+    if (statusFilter !== 'All') parts.push(`Estado: ${statusFilter}`);
+    if (taskPriorityFilter) parts.push(`Prioridad: ${getPriorityLabel(taskPriorityFilter)}`);
+    if (taskDateFrom) parts.push(`Desde: ${taskDateFrom}`);
+    if (taskDateTo) parts.push(`Hasta: ${taskDateTo}`);
+    exportToExcelData(tasksData, 'Reporte_General', parts.length ? parts.join(' | ') : undefined);
+  };
+
+  const handleExportFilteredReport = () => {
+    const parts: string[] = [];
+    if (reportAreaFilter !== 'All') { const a = areas.find(x => String(x.id) === String(reportAreaFilter)); if (a) parts.push(`Área: ${a.nombre}`); }
+    if (reportProjectFilter !== 'All') { const p = projects.find(x => String(x.id) === String(reportProjectFilter)); if (p) parts.push(`Proyecto: ${p.nombre}`); }
+    if (reportDateFrom) parts.push(`Desde: ${reportDateFrom}`);
+    if (reportDateTo) parts.push(`Hasta: ${reportDateTo}`);
+    exportToExcelData(filteredReportTasks, 'Reporte_Filtrado', parts.length ? parts.join(' | ') : undefined);
+  };
 
   const handleDownloadTemplate = async () => {
     const workbook = new ExcelJS.Workbook();
@@ -1529,109 +1786,331 @@ const handleDeleteEvidence = async (evidenceId: number) => {
   const renderReportsView = () => {
     const totalTasks = filteredReportTasks.length;
     const completedTasks = filteredReportTasks.filter(t => t.estado === 'Completado').length;
+    const inProgressTasks = filteredReportTasks.filter(t => t.estado === 'En curso').length;
     const overdueTasks = filteredReportTasks.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length;
     const generalProgress = totalTasks > 0 ? (filteredReportTasks.reduce((sum, t) => sum + (Number(t.porcentaje_avance) || 0), 0) / totalTasks).toFixed(1) : 0;
 
-    const tasksByArea = areas.map(area => {
-      const areaTasks = filteredReportTasks.filter(t => t.area_origen_id === area.id);
-      return { name: area.nombre.length > 15 ? area.nombre.substring(0, 15) + '...' : area.nombre, Total: areaTasks.length, Completadas: areaTasks.filter(t => t.estado === 'Completado').length, Atrasadas: areaTasks.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length };
-    }).filter(data => data.Total > 0);
+    const ttStyle = { borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' };
 
+    // Barras por área
+    const tasksByArea = areas.map(area => {
+      const at = filteredReportTasks.filter(t => t.area_origen_id === area.id);
+      return { name: area.nombre.length > 15 ? area.nombre.substring(0, 15) + '...' : area.nombre, Total: at.length, Completadas: at.filter(t => t.estado === 'Completado').length, Atrasadas: at.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length };
+    }).filter(d => d.Total > 0);
+
+    // Donut distribución por estado
+    const ESTADO_CLR: Record<string, string> = { 'Planeado': '#64748b', 'En curso': '#3b82f6', 'En espera': '#f59e0b', 'Completado': '#10b981', 'Cancelado': '#cbd5e1' };
+    const estadoData = ['Planeado', 'En curso', 'En espera', 'Completado', 'Cancelado'].map(e => ({
+      name: e, value: filteredReportTasks.filter(t => t.estado === e).length, color: ESTADO_CLR[e],
+    })).filter(d => d.value > 0);
+
+    // Avance por proyecto (barras horizontales)
+    const projectProgress = projects.map(p => {
+      const pt = filteredReportTasks.filter(t => t.proyecto_id === p.id);
+      if (!pt.length) return null;
+      const avg = Math.round(pt.reduce((s, t) => s + (Number(t.porcentaje_avance) || 0), 0) / pt.length);
+      return { name: p.nombre.length > 24 ? p.nombre.substring(0, 24) + '…' : p.nombre, Avance: avg, Tareas: pt.length };
+    }).filter(Boolean).sort((a: any, b: any) => b.Avance - a.Avance) as any[];
+
+    // Distribución por prioridad
+    const PRIO_CLR: Record<string, string> = { 'Muy Alta': '#ef4444', 'Alta': '#f97316', 'Media': '#3b82f6', 'Baja': '#64748b', 'Muy Baja': '#cbd5e1' };
+    const priorityData = ['0|Muy Alta', '1|Alta', '2|Media', '3|Baja', '4|Muy Baja'].map(p => {
+      const label = getPriorityLabel(p);
+      const pt = filteredReportTasks.filter(t => t.prioridad === p);
+      return { name: label, Total: pt.length, Atrasadas: pt.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length, color: PRIO_CLR[label] };
+    }).filter(d => d.Total > 0);
+
+    // Próximas a vencer (14 días)
+    const todayD = new Date(); todayD.setHours(0, 0, 0, 0);
+    const in14 = new Date(todayD); in14.setDate(in14.getDate() + 14);
+    const proximasAVencer = filteredReportTasks.filter(t => {
+      if (!t.fecha_fin || t.estado === 'Completado' || t.estado === 'Cancelado') return false;
+      const f = new Date(String(t.fecha_fin).split('T')[0] + 'T00:00:00');
+      return f >= todayD && f <= in14;
+    }).sort((a: any, b: any) => new Date(String(a.fecha_fin).split('T')[0]).getTime() - new Date(String(b.fecha_fin).split('T')[0]).getTime());
+
+    // Tabla de salud por área
+    const areaHealth = areas.map(area => {
+      const at = filteredReportTasks.filter(t => t.area_origen_id === area.id);
+      if (!at.length) return null;
+      const comp = at.filter(t => t.estado === 'Completado').length;
+      const enCurso = at.filter(t => t.estado === 'En curso').length;
+      const atrasadas = at.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length;
+      const avgAvance = Math.round(at.reduce((s, t) => s + (Number(t.porcentaje_avance) || 0), 0) / at.length);
+      return { nombre: area.nombre, total: at.length, comp, enCurso, atrasadas, avgAvance, riskRate: atrasadas / at.length };
+    }).filter(Boolean).sort((a: any, b: any) => b.atrasadas - a.atrasadas) as any[];
+
+    // Ranking empleados
     const userStats = allUsers.map(user => {
       const fullName = `${user.nombre} ${user.apellido}`;
-      const assignedTasks = filteredReportTasks.filter(t => t.responsable && String(t.responsable).includes(fullName));
-      return { name: fullName, total: assignedTasks.length, completed: assignedTasks.filter(t => t.estado === 'Completado').length, progress: assignedTasks.length > 0 ? Math.round(assignedTasks.reduce((sum, t) => sum + (Number(t.porcentaje_avance) || 0), 0) / assignedTasks.length) : 0 };
-    }).filter(u => u.total > 0).sort((a, b) => b.total - a.total).slice(0, 5);
+      const ut = filteredReportTasks.filter(t => t.responsable && String(t.responsable).includes(fullName));
+      return { name: fullName, total: ut.length, completed: ut.filter(t => t.estado === 'Completado').length, overdue: ut.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length, progress: ut.length > 0 ? Math.round(ut.reduce((s, t) => s + (Number(t.porcentaje_avance) || 0), 0) / ut.length) : 0 };
+    }).filter(u => u.total > 0).sort((a, b) => b.total - a.total).slice(0, 10);
 
     const clearFilters = () => { setReportAreaFilter('All'); setReportProjectFilter('All'); setReportDateFrom(''); setReportDateTo(''); };
 
     return (
       <div className="space-y-6">
+
+        {/* Filtros */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-end gap-4">
-           <div className="flex-1 min-w-[200px]">
-             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por   rea</label>
-             <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500 font-medium" value={reportAreaFilter} onChange={(e) => setReportAreaFilter(e.target.value)}>
-                <option value="All">Todas las   reas</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-             </select>
-           </div>
-           <div className="flex-1 min-w-[200px]">
-             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Proyecto</label>
-             <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500 font-medium" value={reportProjectFilter} onChange={(e) => setReportProjectFilter(e.target.value)}>
-                <option value="All">Todos los Proyectos</option>{projects.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-             </select>
-           </div>
-           <div className="w-[140px]">
-             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Desde</label>
-             <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium" value={reportDateFrom} onChange={(e) => setReportDateFrom(e.target.value)} />
-           </div>
-           <div className="w-[140px]">
-             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Hasta</label>
-             <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium" value={reportDateTo} onChange={(e) => setReportDateTo(e.target.value)} />
-           </div>
-           <div className="flex gap-2">
-             <button onClick={clearFilters} className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all"><FilterX size={18} /></button>
-             <button onClick={handleExportFilteredReport} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-sm shadow-emerald-200 flex items-center gap-2"><Download size={18} /> Exportar Excel</button>
-           </div>
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Área</label>
+            <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500 font-medium" value={reportAreaFilter} onChange={(e) => setReportAreaFilter(e.target.value)}>
+              <option value="All">Todas las Áreas</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+            </select>
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Proyecto</label>
+            <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500 font-medium" value={reportProjectFilter} onChange={(e) => setReportProjectFilter(e.target.value)}>
+              <option value="All">Todos los Proyectos</option>{projects.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          </div>
+          <div className="w-[140px]">
+            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Desde</label>
+            <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium" value={reportDateFrom} onChange={(e) => setReportDateFrom(e.target.value)} />
+          </div>
+          <div className="w-[140px]">
+            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Hasta</label>
+            <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium" value={reportDateTo} onChange={(e) => setReportDateTo(e.target.value)} />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={clearFilters} className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all"><FilterX size={18} /></button>
+            <button onClick={handleExportFilteredReport} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-sm shadow-emerald-200 flex items-center gap-2"><Download size={18} /> Exportar Excel</button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center"><FileText size={24}/></div>
-            <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total Tareas</p><h3 className="text-2xl font-black text-slate-900">{totalTasks}</h3></div>
+        {/* KPIs */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0"><FileText size={20}/></div>
+            <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total</p><h3 className="text-2xl font-black text-slate-900">{totalTasks}</h3></div>
           </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center"><CheckCircle2 size={24}/></div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0"><CheckCircle2 size={20}/></div>
             <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Completadas</p><h3 className="text-2xl font-black text-emerald-600">{completedTasks}</h3></div>
           </div>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-red-50 text-red-600 flex items-center justify-center"><AlertCircle size={24}/></div>
-            <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Atrasadas</p><h3 className="text-2xl font-black text-red-600">{overdueTasks}</h3></div>
+          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0"><PlayCircle size={20}/></div>
+            <div><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">En Curso</p><h3 className="text-2xl font-black text-indigo-600">{inProgressTasks}</h3></div>
           </div>
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-5 rounded-2xl border border-slate-700 shadow-sm flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-white/10 text-white flex items-center justify-center"><TrendingUp size={24}/></div>
-            <div><p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Progreso Global</p><h3 className="text-2xl font-black text-white">{generalProgress}%</h3></div>
+          <div className={`p-5 rounded-2xl border shadow-sm flex items-center gap-3 ${overdueTasks > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-200'}`}>
+            <div className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${overdueTasks > 0 ? 'bg-red-100 text-red-600' : 'bg-slate-50 text-slate-400'}`}><AlertCircle size={20}/></div>
+            <div><p className={`text-[10px] font-bold uppercase tracking-widest ${overdueTasks > 0 ? 'text-red-500' : 'text-slate-400'}`}>Atrasadas</p><h3 className={`text-2xl font-black ${overdueTasks > 0 ? 'text-red-600' : 'text-slate-900'}`}>{overdueTasks}</h3></div>
+          </div>
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 p-5 rounded-2xl border border-slate-700 shadow-sm flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-white/10 text-white flex items-center justify-center shrink-0"><TrendingUp size={20}/></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">Avance Global</p>
+              <h3 className="text-2xl font-black text-white">{generalProgress}%</h3>
+              <div className="w-full bg-white/10 h-1 rounded-full mt-1"><div className="h-full bg-blue-400 rounded-full" style={{ width: `${generalProgress}%` }} /></div>
+            </div>
           </div>
         </div>
 
+        {/* Fila 2: Barras por área + Donut por estado */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-             <div className="flex items-center gap-2 mb-6"><BarChart3 size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Volumen de Tareas por Área</span></div>
-             <div className="h-80">
-               {tasksByArea.length > 0 ? (
-                 <ResponsiveContainer width="100%" height="100%">
-                   <BarChart data={tasksByArea} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
-                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
-                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                     <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                     <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }} />
-                     <Bar dataKey="Total" fill="#94a3b8" radius={[4, 4, 0, 0]} />
-                     <Bar dataKey="Completadas" fill="#10b981" radius={[4, 4, 0, 0]} />
-                     <Bar dataKey="Atrasadas" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                   </BarChart>
-                 </ResponsiveContainer>
-               ) : <div className="flex h-full items-center justify-center text-slate-400 text-sm italic">Cambia los filtros para ver datos</div>}
-             </div>
+            <div className="flex items-center gap-2 mb-5"><BarChart3 size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Volumen de Tareas por Área</span></div>
+            <div className="h-72">
+              {tasksByArea.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={tasksByArea} margin={{ top: 10, right: 10, left: -20, bottom: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <Tooltip cursor={{ fill: '#f8fafc' }} contentStyle={ttStyle} />
+                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '16px' }} />
+                    <Bar dataKey="Total" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Completadas" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Atrasadas" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <div className="flex h-full items-center justify-center text-slate-400 text-sm italic">Sin datos para mostrar</div>}
+            </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
-            <div className="flex items-center gap-2 mb-6"><Activity size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Top 5 Empleados</span></div>
-             <div className="flex-1 space-y-4 overflow-y-auto pr-2">
-               {userStats.length > 0 ? userStats.map((user, index) => (
-                 <div key={index} className="flex flex-col gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="flex justify-between items-center">
-                       <span className="text-sm font-bold text-slate-800 line-clamp-1" title={user.name}>{user.name}</span>
-                       <span className="text-xs font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">{user.total} tareas</span>
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2 mb-4"><PieChartIconLucide size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Distribución por Estado</span></div>
+            {estadoData.length > 0 ? (
+              <>
+                <div className="relative h-44">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={estadoData} cx="50%" cy="50%" innerRadius={50} outerRadius={76} paddingAngle={3} dataKey="value" strokeWidth={0}>
+                        {estadoData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                      </Pie>
+                      <Tooltip contentStyle={ttStyle} formatter={(val: any, name: any) => [`${val} tareas`, name]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-2xl font-black text-slate-900">{totalTasks}</span>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Tareas</span>
+                  </div>
+                </div>
+                <div className="space-y-2 mt-3">
+                  {estadoData.map((e, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: e.color }}/><span className="text-slate-600 font-medium">{e.name}</span></div>
+                      <div className="flex items-center gap-2"><span className="font-black text-slate-900">{e.value}</span><span className="text-slate-400 w-8 text-right">{totalTasks > 0 ? Math.round((e.value / totalTasks) * 100) : 0}%</span></div>
                     </div>
-                    <div className="flex items-center gap-3">
-                       <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(user.progress)}`} style={{ width: `${user.progress}%` }}/></div>
-                       <span className="text-[10px] font-bold text-slate-500 w-8 text-right">{user.progress}%</span>
-                    </div>
-                 </div>
-               )) : <div className="flex h-full items-center justify-center text-slate-400 text-sm italic">Cambia los filtros para ver usuarios</div>}
-             </div>
+                  ))}
+                </div>
+              </>
+            ) : <div className="flex h-44 items-center justify-center text-slate-400 text-sm italic">Sin datos</div>}
           </div>
         </div>
+
+        {/* Fila 3: Avance por proyecto + Distribución por prioridad */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2 mb-5"><TrendingUp size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Avance por Proyecto</span></div>
+            <div className="h-72">
+              {projectProgress.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart layout="vertical" data={projectProgress} margin={{ top: 5, right: 40, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                    <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <YAxis type="category" dataKey="name" width={140} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <Tooltip contentStyle={ttStyle} formatter={(val: any) => [`${val}%`, 'Avance promedio']} />
+                    <Bar dataKey="Avance" radius={[0, 4, 4, 0]} maxBarSize={18}>
+                      {projectProgress.map((e: any, i: number) => (
+                        <Cell key={i} fill={e.Avance >= 76 ? '#10b981' : e.Avance >= 51 ? '#3b82f6' : e.Avance >= 26 ? '#f59e0b' : '#ef4444'} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <div className="flex h-full items-center justify-center text-slate-400 text-sm italic">Sin proyectos con tareas en el filtro actual</div>}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center gap-2 mb-5"><Activity size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Distribución por Prioridad</span></div>
+            <div className="h-72">
+              {priorityData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={priorityData} margin={{ top: 10, right: 10, left: -20, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <Tooltip contentStyle={ttStyle} />
+                    <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
+                    <Bar dataKey="Total" radius={[4, 4, 0, 0]} maxBarSize={44}>
+                      {priorityData.map((e: any, i: number) => <Cell key={i} fill={e.color} />)}
+                    </Bar>
+                    <Bar dataKey="Atrasadas" fill="#fca5a5" radius={[4, 4, 0, 0]} maxBarSize={44} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <div className="flex h-full items-center justify-center text-slate-400 text-sm italic">Sin datos</div>}
+            </div>
+          </div>
+        </div>
+
+        {/* Fila 4: Tabla salud por área + Próximas a vencer */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center gap-2"><Building2 size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Salud por Área</span></div>
+            {areaHealth.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <th className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Área</th>
+                      <th className="text-center px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Total</th>
+                      <th className="text-center px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Complet.</th>
+                      <th className="text-center px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">En Curso</th>
+                      <th className="text-center px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Atrasadas</th>
+                      <th className="text-left px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[140px]">Avance Prom.</th>
+                      <th className="text-center px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Riesgo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {areaHealth.map((area: any, idx: number) => {
+                      const riskCls = area.riskRate > 0.3 ? 'text-red-600 bg-red-50 border-red-200' : area.riskRate > 0 ? 'text-amber-600 bg-amber-50 border-amber-200' : 'text-emerald-600 bg-emerald-50 border-emerald-200';
+                      const riskLabel = area.riskRate > 0.3 ? 'Alto' : area.riskRate > 0 ? 'Medio' : 'Bajo';
+                      return (
+                        <tr key={idx} className={`border-b border-slate-50 hover:bg-blue-50/30 transition-colors ${idx % 2 !== 0 ? 'bg-slate-50/40' : ''}`}>
+                          <td className="px-4 py-3 font-semibold text-slate-800 text-xs">{area.nombre}</td>
+                          <td className="px-3 py-3 text-center font-black text-slate-700">{area.total}</td>
+                          <td className="px-3 py-3 text-center font-bold text-emerald-600">{area.comp}</td>
+                          <td className="px-3 py-3 text-center font-bold text-indigo-600">{area.enCurso}</td>
+                          <td className="px-3 py-3 text-center">{area.atrasadas > 0 ? <span className="font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-lg text-xs">{area.atrasadas}</span> : <span className="text-slate-300 text-xs">—</span>}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(area.avgAvance)}`} style={{ width: `${area.avgAvance}%` }} /></div>
+                              <span className="text-xs font-bold text-slate-600 w-8 text-right">{area.avgAvance}%</span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-3 text-center"><span className={`text-[10px] font-black px-2 py-0.5 rounded-full border uppercase ${riskCls}`}>{riskLabel}</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : <div className="p-8 text-center text-slate-400 text-sm italic">Sin datos para mostrar</div>}
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2"><Calendar size={18} className="text-amber-500"/><span className="font-bold text-slate-900">Próximas a Vencer</span></div>
+              <span className="text-[10px] font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200 uppercase">14 días</span>
+            </div>
+            <div className="divide-y divide-slate-50 max-h-80 overflow-y-auto">
+              {proximasAVencer.length > 0 ? (proximasAVencer as any[]).map((t: any, i: number) => {
+                const f = new Date(String(t.fecha_fin).split('T')[0] + 'T00:00:00');
+                const dLeft = Math.ceil((f.getTime() - todayD.getTime()) / 86400000);
+                const urgCls = dLeft === 0 ? 'text-red-600 bg-red-50 border-red-200' : dLeft <= 3 ? 'text-orange-600 bg-orange-50 border-orange-200' : 'text-amber-600 bg-amber-50 border-amber-200';
+                return (
+                  <div key={i} className="px-4 py-3 hover:bg-slate-50 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs font-semibold text-slate-800 line-clamp-2 flex-1">{t.actividad}</p>
+                      <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border whitespace-nowrap shrink-0 ${urgCls}`}>{dLeft === 0 ? 'Hoy' : `${dLeft}d`}</span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-0.5 truncate">{String(t.responsable || '').split(',')[0].trim()}</p>
+                  </div>
+                );
+              }) : (
+                <div className="p-8 text-center">
+                  <CheckCircle2 size={28} className="text-emerald-300 mx-auto mb-2" />
+                  <p className="text-sm text-slate-400 italic">Sin vencimientos en los próximos 14 días</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Ranking de empleados */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-5"><Activity size={18} className="text-slate-400"/><span className="font-bold text-slate-900">Ranking por Carga de Trabajo</span></div>
+          {userStats.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {userStats.map((user, idx) => (
+                <div key={idx} className="flex flex-col gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-blue-200 transition-colors">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {idx === 0 && <span className="text-base shrink-0">🏆</span>}
+                      {idx === 1 && <span className="text-base shrink-0">🥈</span>}
+                      {idx === 2 && <span className="text-base shrink-0">🥉</span>}
+                      {idx > 2 && <span className="text-[10px] font-black text-slate-400 bg-slate-200 px-1.5 py-0.5 rounded shrink-0">#{idx+1}</span>}
+                      <span className="text-sm font-bold text-slate-800 truncate" title={user.name}>{user.name}</span>
+                    </div>
+                    <span className="text-xs font-black text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full shrink-0">{user.total}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(user.progress)}`} style={{ width: `${user.progress}%` }}/></div>
+                    <span className="text-[10px] font-bold text-slate-500 w-8 text-right">{user.progress}%</span>
+                  </div>
+                  <div className="flex gap-3 text-[10px] font-bold">
+                    <span className="text-emerald-600">{user.completed} completadas</span>
+                    {user.overdue > 0 && <span className="text-red-500">{user.overdue} atrasadas</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : <div className="text-center text-slate-400 text-sm italic py-8">Sin datos de empleados</div>}
+        </div>
+
       </div>
     );
   };
@@ -1646,6 +2125,14 @@ const handleDeleteEvidence = async (evidenceId: number) => {
   const completedProjectsCount = projects.filter(p => p.estado === 'Finalizado').length;
   const overdueProjectsCount = projects.filter(p => p.estado === 'Activo' && getDaysOverdue(p.fecha_fin || '', p.estado) > 0).length;
   const globalProjectProgressRaw = projects.length > 0 ? projects.reduce((acc, p) => { const pTasks = tasks.filter(t => t.proyecto_id === p.id); const pProgress = pTasks.length > 0 ? pTasks.reduce((sum, t) => sum + (Number(t.porcentaje_avance) || 0), 0) / pTasks.length : 0; return acc + pProgress; }, 0) / projects.length : 0;
+
+  const filteredProjects = projects.filter(p => {
+    if (projectSearchTerm && !p.nombre.toLowerCase().includes(projectSearchTerm.toLowerCase())) return false;
+    if (projectStatusFilter && p.estado !== projectStatusFilter) return false;
+    if (projectLiderFilter && String(p.lider_id) !== projectLiderFilter) return false;
+    if (projectPrioritarioFilter && !p.prioritario) return false;
+    return true;
+  });
 
 const renderDynamicCell = (colId: string, task: any, index: number, isControlView = false) => {
     const overdueDays = getDaysOverdue(task.fecha_fin, task.estado);
@@ -2250,6 +2737,25 @@ case 'responsable':
                       <option value="Completado">Completado</option>
                     </select>
                   )}
+                  <select className="bg-white border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-40" value={taskPriorityFilter} onChange={e => setTaskPriorityFilter(e.target.value)}>
+                    <option value="">Prioridad</option>
+                    <option value="0|Muy Alta">Muy Alta</option>
+                    <option value="1|Alta">Alta</option>
+                    <option value="2|Media">Media</option>
+                    <option value="3|Baja">Baja</option>
+                    <option value="4|Muy Baja">Muy Baja</option>
+                  </select>
+                  <div className="flex items-center gap-2">
+                    <Calendar size={15} className="text-slate-400 shrink-0" />
+                    <input type="date" className="bg-white border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-36" value={taskDateFrom} onChange={e => setTaskDateFrom(e.target.value)} title="Compromiso desde" />
+                    <span className="text-slate-400 text-xs font-bold">—</span>
+                    <input type="date" className="bg-white border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-36" value={taskDateTo} onChange={e => setTaskDateTo(e.target.value)} title="Compromiso hasta" />
+                  </div>
+                  {(taskPriorityFilter || taskDateFrom || taskDateTo) && (
+                    <button onClick={() => { setTaskPriorityFilter(''); setTaskDateFrom(''); setTaskDateTo(''); }} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap">
+                      <FilterX size={14} /> Limpiar
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2357,9 +2863,69 @@ case 'responsable':
                  <div className="bg-blue-600 p-4 rounded-2xl border border-blue-700 shadow-sm flex flex-col justify-center"><span className="text-[10px] font-bold text-blue-100 uppercase tracking-widest mb-1">Avance Global</span><span className="text-2xl font-black text-white">{globalProjectProgressRaw.toFixed(1)}%</span></div>
               </div>
 
-              {projects.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm bg-white rounded-2xl border border-slate-200">No hay proyectos registrados. Crea uno nuevo para comenzar.</div> : (
+              {/* Barra de filtros */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-2">
+                <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Buscar proyecto..."
+                      className="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm"
+                      value={projectSearchTerm}
+                      onChange={e => setProjectSearchTerm(e.target.value)}
+                    />
+                  </div>
+                  <select
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 outline-none focus:ring-2 focus:ring-blue-500/20 w-full lg:w-48"
+                    value={projectStatusFilter}
+                    onChange={e => setProjectStatusFilter(e.target.value)}
+                  >
+                    <option value="">Todos los estados</option>
+                    <option value="Activo">Activo</option>
+                    <option value="Finalizado">Finalizado</option>
+                    <option value="Cancelado">Cancelado</option>
+                  </select>
+                  <select
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 outline-none focus:ring-2 focus:ring-blue-500/20 w-full lg:w-52"
+                    value={projectLiderFilter}
+                    onChange={e => setProjectLiderFilter(e.target.value)}
+                  >
+                    <option value="">Todos los líderes</option>
+                    {Array.from(new Set(projects.map(p => p.lider_id).filter(Boolean))).map(liderId => {
+                      const u = allUsers.find(u => u.id === liderId);
+                      return u ? <option key={liderId} value={String(liderId)}>{u.nombre} {u.apellido}</option> : null;
+                    })}
+                  </select>
+                  <button
+                    onClick={() => setProjectPrioritarioFilter(v => !v)}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-all whitespace-nowrap ${projectPrioritarioFilter ? 'bg-orange-100 border-orange-300 text-orange-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
+                  >
+                    ⭐ Solo prioritarios
+                  </button>
+                  {(projectSearchTerm || projectStatusFilter || projectLiderFilter || projectPrioritarioFilter) && (
+                    <button
+                      onClick={() => { setProjectSearchTerm(''); setProjectStatusFilter(''); setProjectLiderFilter(''); setProjectPrioritarioFilter(false); }}
+                      className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap"
+                    >
+                      <FilterX size={15} /> Limpiar
+                    </button>
+                  )}
+                </div>
+                {(projectSearchTerm || projectStatusFilter || projectLiderFilter || projectPrioritarioFilter) && (
+                  <p className="text-xs text-slate-400 mt-2 pt-2 border-t border-slate-100">
+                    Mostrando <span className="font-bold text-slate-600">{filteredProjects.length}</span> de <span className="font-bold text-slate-600">{projects.length}</span> proyectos
+                  </p>
+                )}
+              </div>
+
+              {projects.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm bg-white rounded-2xl border border-slate-200">No hay proyectos registrados. Crea uno nuevo para comenzar.</div>
+              ) : filteredProjects.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm bg-white rounded-2xl border border-slate-200">Ningún proyecto coincide con los filtros aplicados.</div>
+              ) : (
                 <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6 items-start">
-                  {projects.map(project => {
+                  {filteredProjects.map(project => {
                     const isExpanded = expandedProjects.has(project.id!);
                     const projectTasks = tasks.filter(t => t.proyecto_id === project.id);
                     const progressRaw = projectTasks.length > 0 ? (projectTasks.reduce((acc, t) => acc + (Number(t.porcentaje_avance) || 0), 0) / projectTasks.length) : 0;
@@ -2483,6 +3049,28 @@ case 'responsable':
                       <option value="Completado">Completado</option>
                     </select>
                   </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-4 mt-4 pt-4 border-t border-slate-100">
+                  <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 flex-1" value={controlPriorityFilter} onChange={e => setControlPriorityFilter(e.target.value)}>
+                    <option value="">Todas las Prioridades</option>
+                    <option value="0|Muy Alta">Muy Alta</option>
+                    <option value="1|Alta">Alta</option>
+                    <option value="2|Media">Media</option>
+                    <option value="3|Baja">Baja</option>
+                    <option value="4|Muy Baja">Muy Baja</option>
+                  </select>
+                  <div className="flex items-center gap-2 flex-1">
+                    <Calendar size={15} className="text-slate-400 shrink-0" />
+                    <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateFrom} onChange={e => setControlDateFrom(e.target.value)} title="Compromiso desde" />
+                    <span className="text-slate-400 text-xs font-bold">—</span>
+                    <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateTo} onChange={e => setControlDateTo(e.target.value)} title="Compromiso hasta" />
+                  </div>
+                  {(controlPriorityFilter || controlDateFrom || controlDateTo) && (
+                    <button onClick={() => { setControlPriorityFilter(''); setControlDateFrom(''); setControlDateTo(''); }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap">
+                      <FilterX size={15} /> Limpiar
+                    </button>
+                  )}
                 </div>
               </div>
 			  
