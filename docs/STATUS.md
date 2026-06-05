@@ -1,12 +1,12 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-04_
+_Última actualización: 2026-06-05_
 
 ---
 
 ## Estado General
 El proyecto está activo y en desarrollo continuo. Backend y frontend operativos. BD PostgreSQL sincronizada.
-Último commit pusheado: `08533dc` — feat: filtros avanzados, export Excel mejorado y reportes gerenciales.
+Último commit pusheado: `282f6b0` — feat: modal solo lectura para tareas completadas, fix bug form proyectos y ajustes de filtros.
 
 ---
 
@@ -99,6 +99,34 @@ Call sites actualizados para construir descripción de filtros activos en la fil
 **Ranking Empleados**: expandido de Top 5 a Top 10, grilla de 3 columnas, muestra completadas + atrasadas por persona.
 
 - **Commit:** `08533dc` — pusheado a `main`.
+
+---
+
+## Completado en sesión 2026-06-05
+
+### 9. Modal solo lectura para tareas Completadas/Canceladas
+- Click en el nombre de una tarea Completada o Cancelada abre el modal de edición en modo **solo lectura** en lugar del modal de detalles.
+- Todos los campos (`input`, `select`, `textarea`, checkboxes, selector de ejecutores) quedan deshabilitados con estilo gris.
+- Header del modal muestra "Ver Tarea" + badge "Solo lectura" en amber.
+- Banner informativo dentro del formulario: _"Esta tarea está completada. Los campos son de solo lectura."_
+- Botón "Guardar Cambios" oculto; botón "Cerrar" ocupa todo el ancho.
+- El ícono 👁️ en la columna de acciones sigue abriendo el modal de detalles (subtareas, comentarios, evidencias) sin cambios.
+- Admins no se ven afectados: siguen abriendo el modal en modo editable.
+- Control de Gestión: sin cambio (comportamiento anterior intacto).
+
+### 10. Fix: formulario de proyectos aparecía al editar tarea desde Gestión de Proyectos
+- Bug: al abrir el modal de edición de tarea con `editingTaskFromProject = true`, el formulario de proyecto se renderizaba debajo del formulario de tarea porque `currentView === 'projects'` seguía siendo `true`.
+- Fix: condición del bloque de proyectos cambiada a `currentView === 'projects' && !editingTaskFromProject`.
+
+### 11. Filtros de fecha por fecha de registro (antes fecha de compromiso)
+- En Panel de Actividades: `taskDateFrom` / `taskDateTo` ahora filtran por `fecha_registro` en lugar de `fecha_fin`.
+- En Control de Gestión: `controlDateFrom` / `controlDateTo` ídem.
+- Tooltips de los inputs de fecha actualizados a "Registro desde / Registro hasta".
+
+### 12. Timeout de inactividad extendido a 30 minutos
+- Valor cambiado de `900000` ms (15 min) → `1800000` ms (30 min) en el `useEffect` de detección de actividad en `Dashboard.tsx`.
+
+- **Commit:** `282f6b0` — pusheado a `main`.
 
 ---
 
