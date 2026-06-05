@@ -257,6 +257,7 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isModalReadOnly, setIsModalReadOnly] = useState(false);
   const [editingItem, setEditingItem] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [formJefe, setFormJefe] = useState('');
@@ -346,7 +347,7 @@ export default function App() {
       alert("Tu sesión ha expirado por inactividad. Por seguridad, debes iniciar sesi  n nuevamente.");
       handleLogout();
     };
-    const resetTimer = () => { clearTimeout(timeoutId); timeoutId = setTimeout(logoutUser, 900000); };
+    const resetTimer = () => { clearTimeout(timeoutId); timeoutId = setTimeout(logoutUser, 1800000); };
     const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart'];
     const activityHandler = () => { resetTimer(); };
     if (isLoggedIn) { events.forEach(e => window.addEventListener(e, activityHandler)); resetTimer(); }
@@ -415,7 +416,7 @@ export default function App() {
     }
     
     const matchesPriority = !taskPriorityFilter || task.prioridad === taskPriorityFilter;
-    const taskFecha = task.fecha_fin ? task.fecha_fin.split('T')[0] : '';
+    const taskFecha = task.fecha_registro ? task.fecha_registro.split('T')[0] : '';
     const matchesDate = (!taskDateFrom || taskFecha >= taskDateFrom) && (!taskDateTo || taskFecha <= taskDateTo);
 
     if (currentView === 'tasks' && currentUser) {
@@ -530,8 +531,8 @@ const filteredControlTasks = controlTasks.filter(task => {
     // 5. Filtro por Prioridad
     const matchesControlPriority = !controlPriorityFilter || task.prioridad === controlPriorityFilter;
 
-    // 6. Filtro por Fecha de compromiso
-    const ctrlFecha = task.fecha_fin ? task.fecha_fin.split('T')[0] : '';
+    // 6. Filtro por Fecha de registro
+    const ctrlFecha = task.fecha_registro ? task.fecha_registro.split('T')[0] : '';
     const matchesControlDate = (!controlDateFrom || ctrlFecha >= controlDateFrom) && (!controlDateTo || ctrlFecha <= controlDateTo);
 
     return matchesSearch && matchesStatus && matchesArea && matchesResponsable && matchesControlPriority && matchesControlDate;
@@ -2166,8 +2167,13 @@ const renderDynamicCell = (colId: string, task: any, index: number, isControlVie
             <div
               onClick={() => {
                 const canEdit = isControlView ? canEditControl : canEditTask;
-                if (canEdit) { setEditingItem(task); setIsModalOpen(true); }
-                else { setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }
+                if (canEdit) {
+                  setEditingItem(task); setIsModalOpen(true); setIsModalReadOnly(false);
+                } else if (isTaskLocked && !isControlView) {
+                  setEditingItem(task); setIsModalOpen(true); setIsModalReadOnly(true);
+                } else {
+                  setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!);
+                }
               }}
               className="text-sm font-bold text-slate-900 cursor-pointer hover:text-blue-600 hover:underline transition-colors max-w-[250px] leading-tight"
             >{task.actividad}</div>
@@ -2747,9 +2753,9 @@ case 'responsable':
                   </select>
                   <div className="flex items-center gap-2">
                     <Calendar size={15} className="text-slate-400 shrink-0" />
-                    <input type="date" className="bg-white border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-36" value={taskDateFrom} onChange={e => setTaskDateFrom(e.target.value)} title="Compromiso desde" />
+                    <input type="date" className="bg-white border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-36" value={taskDateFrom} onChange={e => setTaskDateFrom(e.target.value)} title="Registro desde" />
                     <span className="text-slate-400 text-xs font-bold">—</span>
-                    <input type="date" className="bg-white border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-36" value={taskDateTo} onChange={e => setTaskDateTo(e.target.value)} title="Compromiso hasta" />
+                    <input type="date" className="bg-white border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-36" value={taskDateTo} onChange={e => setTaskDateTo(e.target.value)} title="Registro hasta" />
                   </div>
                   {(taskPriorityFilter || taskDateFrom || taskDateTo) && (
                     <button onClick={() => { setTaskPriorityFilter(''); setTaskDateFrom(''); setTaskDateTo(''); }} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap">
@@ -3062,9 +3068,9 @@ case 'responsable':
                   </select>
                   <div className="flex items-center gap-2 flex-1">
                     <Calendar size={15} className="text-slate-400 shrink-0" />
-                    <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateFrom} onChange={e => setControlDateFrom(e.target.value)} title="Compromiso desde" />
+                    <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateFrom} onChange={e => setControlDateFrom(e.target.value)} title="Registro desde" />
                     <span className="text-slate-400 text-xs font-bold">—</span>
-                    <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateTo} onChange={e => setControlDateTo(e.target.value)} title="Compromiso hasta" />
+                    <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateTo} onChange={e => setControlDateTo(e.target.value)} title="Registro hasta" />
                   </div>
                   {(controlPriorityFilter || controlDateFrom || controlDateTo) && (
                     <button onClick={() => { setControlPriorityFilter(''); setControlDateFrom(''); setControlDateTo(''); }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap">
@@ -3189,34 +3195,43 @@ case 'responsable':
       <AnimatePresence>
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setIsModalOpen(false); setEditingTaskFromProject(false); }} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => { setIsModalOpen(false); setEditingTaskFromProject(false); setIsModalReadOnly(false); }} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden">
               <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                <h3 className="text-lg font-bold text-slate-900">{editingItem ? 'Editar' : 'Nuevo'} {(currentView === 'tasks' || currentView === 'control' || editingTaskFromProject) ? 'Tarea' : currentView === 'users' ? 'Usuario' : currentView === 'projects' ? 'Proyecto' : 'Área'}</h3>
-                <button onClick={() => { setIsModalOpen(false); setEditingTaskFromProject(false); }} className="p-2 text-slate-400 hover:text-slate-600"><X size={20} /></button>
+                <div className="flex items-center gap-3">
+                  <h3 className="text-lg font-bold text-slate-900">{isModalReadOnly ? 'Ver' : (editingItem ? 'Editar' : 'Nuevo')} {(currentView === 'tasks' || currentView === 'control' || editingTaskFromProject) ? 'Tarea' : currentView === 'users' ? 'Usuario' : currentView === 'projects' ? 'Proyecto' : 'Área'}</h3>
+                  {isModalReadOnly && <span className="text-[10px] font-black px-2 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 uppercase tracking-wide">Solo lectura</span>}
+                </div>
+                <button onClick={() => { setIsModalOpen(false); setEditingTaskFromProject(false); setIsModalReadOnly(false); }} className="p-2 text-slate-400 hover:text-slate-600"><X size={20} /></button>
               </div>
 
               <form onSubmit={(currentView === 'tasks' || currentView === 'control' || editingTaskFromProject) ? handleTaskSubmit : currentView === 'users' ? handleUserSubmit : currentView === 'projects' ? handleProjectSubmit : handleAreaSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto bg-slate-50">
 
                 {(currentView === 'tasks' || currentView === 'control' || editingTaskFromProject) && (
                   <div className="space-y-6">
+                    {isModalReadOnly && (
+                      <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm font-semibold">
+                        <Lock size={15} className="shrink-0" />
+                        Esta tarea está completada. Los campos son de solo lectura.
+                      </div>
+                    )}
                     <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
                       <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2 border-b border-slate-100 pb-2">1. Identificación Básica</h4>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase">Actividad</label>
-                        <input name="actividad" required defaultValue={editingItem?.actividad} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                        <input name="actividad" required defaultValue={editingItem?.actividad} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`} />
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Proyecto / Iniciativa</label>
-                          <select name="proyecto_id" defaultValue={editingItem?.proyecto_id || preselectedProjectId || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 text-indigo-700 font-medium">
+                          <select name="proyecto_id" defaultValue={editingItem?.proyecto_id || preselectedProjectId || ''} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none text-indigo-700 font-medium ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed' : 'bg-slate-50 focus:border-indigo-500'}`}>
                             <option value="">Ninguno</option>
                             {projects.filter(p => p.estado === 'Activo').map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                           </select>
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">  área / Origen</label>
-                          <select name="area_origen_id" defaultValue={editingItem?.area_origen_id || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
+                          <select name="area_origen_id" defaultValue={editingItem?.area_origen_id || ''} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`}>
                             <option value="">Selecciona un área</option>
                             {areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                           </select>
@@ -3225,11 +3240,11 @@ case 'responsable':
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Tipo</label>
-                          <input name="tipo" placeholder="Ej: Mejora, Soporte, Desarrollo..." defaultValue={editingItem?.tipo} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                          <input name="tipo" placeholder="Ej: Mejora, Soporte, Desarrollo..." defaultValue={editingItem?.tipo} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`} />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Temática</label>
-                          <input name="tematica" placeholder="Ej: Facturación Electrónica" defaultValue={editingItem?.tematica} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                          <input name="tematica" placeholder="Ej: Facturación Electrónica" defaultValue={editingItem?.tematica} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`} />
                         </div>
                       </div>
                     </div>
@@ -3239,7 +3254,7 @@ case 'responsable':
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Gerente / Jefe Responsable</label>
-                          <select name="gerente_responsable" defaultValue={editingItem?.gerente_responsable || ''} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
+                          <select name="gerente_responsable" defaultValue={editingItem?.gerente_responsable || ''} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`}>
                             <option value="">Sin Asignar</option>
                             {allUsers.map(u => <option key={u.id} value={`${u.nombre} ${u.apellido}`}>{u.nombre} {u.apellido}</option>)}
                           </select>
@@ -3251,14 +3266,14 @@ case 'responsable':
                           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col gap-2">
                               <div className="relative">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                                <input type="text" placeholder="Buscar usuario..." className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-blue-400" value={userSearchTerm} onChange={(e) => setUserSearchTerm(e.target.value)} />
+                                <input type="text" placeholder="Buscar usuario..." disabled={isModalReadOnly} className={`w-full pl-8 pr-3 py-1.5 border border-slate-200 rounded-lg text-xs focus:outline-none ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed' : 'bg-white focus:border-blue-400'}`} value={userSearchTerm} onChange={(e) => setUserSearchTerm(e.target.value)} />
                               </div>
                               <div className="max-h-24 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                   {allUsers.filter(u => `${u.nombre} ${u.apellido}`.toLowerCase().includes(userSearchTerm.toLowerCase())).map(u => {
                                       const fullName = `${u.nombre} ${u.apellido}`;
                                       const isSelected = selectedResponsibles.includes(fullName);
                                       return (
-                                          <div key={u.id} onClick={() => toggleResponsible(fullName)} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors border ${isSelected ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-transparent hover:border-slate-200 text-slate-600'}`}>
+                                          <div key={u.id} onClick={() => !isModalReadOnly && toggleResponsible(fullName)} className={`flex items-center gap-2 p-2 rounded-lg transition-colors border ${isModalReadOnly ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'} ${isSelected ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-transparent hover:border-slate-200 text-slate-600'}`}>
                                               {isSelected ? <CheckSquare size={16} className="text-blue-600"/> : <Square size={16} className="text-slate-400"/>}
                                               <span className="text-xs font-bold truncate" title={fullName}>{fullName}</span>
                                           </div>
@@ -3275,16 +3290,16 @@ case 'responsable':
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Inicio</label>
-                          <input name="fecha_inicio" type="date" required defaultValue={editingItem?.fecha_inicio} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                          <input name="fecha_inicio" type="date" required defaultValue={editingItem?.fecha_inicio} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`} />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Compromiso</label>
-                          <input name="fecha_fin" type="date" required defaultValue={editingItem?.fecha_fin} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                          <input name="fecha_fin" type="date" required defaultValue={editingItem?.fecha_fin} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`} />
                         </div>
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase">Compromiso Semanal</label>
-                        <textarea name="compromiso_semanal" rows={2} placeholder="Meta de la semana..." defaultValue={editingItem?.compromiso_semanal} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none" />
+                        <textarea name="compromiso_semanal" rows={2} placeholder="Meta de la semana..." defaultValue={editingItem?.compromiso_semanal} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none resize-none ${isModalReadOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`} />
                       </div>
                     </div>
 
@@ -3293,7 +3308,7 @@ case 'responsable':
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-indigo-600 uppercase">Alineación Estratégica</label>
-                          <select name="alineacion_estrategica" defaultValue={editingItem?.alineacion_estrategica || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
+                          <select name="alineacion_estrategica" defaultValue={editingItem?.alineacion_estrategica || ''} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-indigo-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed' : 'bg-white focus:border-indigo-500'}`}>
                             <option value="">Seleccione una opción</option>
                             <option value="WIG 1 Crecimiento de Ingresos">WIG 1 Crecimiento de Ingresos</option>
                             <option value="WIG 2 Reducci  n y control del costo">WIG 2 Reducción y control del costo</option>
@@ -3302,7 +3317,7 @@ case 'responsable':
                         </div>
                         <div className="space-y-1 flex flex-col justify-end">
                            <label className="flex items-center gap-3 p-2 bg-white rounded-xl border border-indigo-200 cursor-pointer hover:bg-indigo-100 transition-colors h-[38px]">
-                             <input type="checkbox" name="requiere_inversion" defaultChecked={editingItem?.requiere_inversion} className="w-4 h-4 text-indigo-600 rounded border-indigo-300" />
+                             <input type="checkbox" name="requiere_inversion" defaultChecked={editingItem?.requiere_inversion} disabled={isModalReadOnly} className={`w-4 h-4 text-indigo-600 rounded border-indigo-300 ${isModalReadOnly ? 'cursor-not-allowed opacity-60' : ''}`} />
                              <span className="text-sm font-bold text-indigo-900">Requiere Inversión Económica</span>
                            </label>
                         </div>
@@ -3310,7 +3325,7 @@ case 'responsable':
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-indigo-600 uppercase">Impacto Financiero/Operativo</label>
-                          <select name="impacto" defaultValue={editingItem?.impacto || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
+                          <select name="impacto" defaultValue={editingItem?.impacto || ''} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-indigo-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed' : 'bg-white focus:border-indigo-500'}`}>
                             <option value="">Seleccione una opción</option>
                             <option value="1. Bajo">1. Bajo</option>
                             <option value="2. Medio">2. Medio</option>
@@ -3319,7 +3334,7 @@ case 'responsable':
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-indigo-600 uppercase">Viabilidad Técnica</label>
-                          <select name="viabilidad_tecnica" defaultValue={editingItem?.viabilidad_tecnica || ''} className="w-full px-4 py-2 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500">
+                          <select name="viabilidad_tecnica" defaultValue={editingItem?.viabilidad_tecnica || ''} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-indigo-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed' : 'bg-white focus:border-indigo-500'}`}>
                             <option value="">Seleccione una opción</option>
                             <option value="1. Alta Complejidad">1. Alta Complejidad</option>
                             <option value="2. Media Complejidad">2. Media Complejidad</option>
@@ -3334,7 +3349,7 @@ case 'responsable':
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-indigo-600 uppercase">Orden de Ejecución (Manual)</label>
-                          <input name="orden_ejecucion" type="number" min="1" placeholder="Ej: 1" defaultValue={editingItem?.orden_ejecucion || ''} className="w-full px-4 py-2 bg-white border border-indigo-400 rounded-xl outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 font-bold text-indigo-900 shadow-sm" />
+                          <input name="orden_ejecucion" type="number" min="1" placeholder="Ej: 1" defaultValue={editingItem?.orden_ejecucion || ''} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-indigo-400 rounded-xl outline-none font-bold text-indigo-900 shadow-sm ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed opacity-70' : 'bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20'}`} />
                         </div>
                       </div>
                     </div>
@@ -3344,13 +3359,13 @@ case 'responsable':
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Prioridad</label>
-                          <select name="prioridad" defaultValue={editingItem?.prioridad || '2|Media'} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
+                          <select name="prioridad" defaultValue={editingItem?.prioridad || '2|Media'} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`}>
                             <option value="0|Muy Alta">Muy Alta</option><option value="1|Alta">Alta</option><option value="2|Media">Media</option><option value="3|Baja">Baja</option><option value="4|Muy Baja">Muy Baja</option>
                           </select>
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Estado</label>
-                          <select name="estado" defaultValue={editingItem?.estado || 'Planeado'} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500">
+                          <select name="estado" defaultValue={editingItem?.estado || 'Planeado'} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`}>
                             {(!editingItem || editingItem.estado === 'Planeado' || currentUser?.is_admin) && <option value="Planeado">Planeado</option>}
                             <option value="En curso">En curso</option>
                             <option value="En espera">En espera</option>
@@ -3360,24 +3375,24 @@ case 'responsable':
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">% Avance Actual</label>
-                          <input name="porcentaje_avance" type="number" min="0" max="100" required defaultValue={editingItem?.porcentaje_avance || 0} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500" />
+                          <input name="porcentaje_avance" type="number" min="0" max="100" required defaultValue={editingItem?.porcentaje_avance || 0} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none ${isModalReadOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`} />
                         </div>
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Dependencia (Prerequisito)</label>
-                          <textarea name="prerequisito" rows={2} defaultValue={editingItem?.prerequisito} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none" />
+                          <textarea name="prerequisito" rows={2} defaultValue={editingItem?.prerequisito} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none resize-none ${isModalReadOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`} />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">Observaciones</label>
-                          <textarea name="observacion" rows={2} defaultValue={editingItem?.observacion} className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 resize-none" />
+                          <textarea name="observacion" rows={2} defaultValue={editingItem?.observacion} disabled={isModalReadOnly} className={`w-full px-4 py-2 border border-slate-200 rounded-xl outline-none resize-none ${isModalReadOnly ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : 'bg-slate-50 focus:border-blue-500'}`} />
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
                 
-                {currentView === 'projects' && (
+                {currentView === 'projects' && !editingTaskFromProject && (
                   <>
                     <div className="space-y-1 mb-4">
                        <label className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl border border-orange-200 cursor-pointer hover:bg-orange-100 transition-colors">
@@ -3482,21 +3497,23 @@ case 'responsable':
                 )}
 
               <div className="pt-6 flex gap-3">
-                  <button 
-                    type="submit" 
-                    disabled={isSubmitting} 
-                    className={`flex-1 text-white py-3 rounded-xl font-bold transition-all shadow-lg ${isSubmitting ? 'bg-blue-400 cursor-not-allowed shadow-none' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100 active:scale-95'}`}
-                  >
-                    {isSubmitting ? 'Guardando...' : (editingItem ? 'Guardar Cambios' : 'Crear Registro')}
-                  </button>
-                  
-                  <button 
-                    type="button" 
+                  {!isModalReadOnly && (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className={`flex-1 text-white py-3 rounded-xl font-bold transition-all shadow-lg ${isSubmitting ? 'bg-blue-400 cursor-not-allowed shadow-none' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100 active:scale-95'}`}
+                    >
+                      {isSubmitting ? 'Guardando...' : (editingItem ? 'Guardar Cambios' : 'Crear Registro')}
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
                     disabled={isSubmitting}
-                    onClick={() => setIsModalOpen(false)} 
-                    className={`px-6 py-3 rounded-xl font-bold transition-all ${isSubmitting ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                    onClick={() => { setIsModalOpen(false); setIsModalReadOnly(false); }}
+                    className={`${isModalReadOnly ? 'flex-1' : 'px-6'} py-3 rounded-xl font-bold transition-all ${isSubmitting ? 'bg-slate-50 text-slate-400 cursor-not-allowed' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                   >
-                    Cancelar
+                    {isModalReadOnly ? 'Cerrar' : 'Cancelar'}
                   </button>
                 </div>
               </form>
