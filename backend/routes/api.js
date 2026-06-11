@@ -12,6 +12,7 @@ const attachmentController = require('../controllers/attachmentController');
 const commentController = require('../controllers/commentController');
 const notificationController = require('../controllers/notificationController');
 const projectController = require('../controllers/projectController');
+const noteController = require('../controllers/noteController');
 
 // ==========================================
 // 1. RUTAS PÚBLICAS
@@ -97,6 +98,12 @@ router.delete('/tasks/evidence/:id', taskController.deleteEvidence);
 // Notificaciones
 router.get('/notifications', notificationController.getByUser);
 router.put('/notifications/read', notificationController.markAsRead);
+
+// Bloc de notas personal
+router.get('/notes', noteController.getMine);
+router.post('/notes', noteController.create);
+router.put('/notes/:id', noteController.update);
+router.delete('/notes/:id', noteController.delete);
 
 // Historial y Evidencias
 router.get('/audit-logs/:taskId', auditLogController.getByTask);

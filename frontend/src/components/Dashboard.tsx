@@ -8,7 +8,7 @@ import {
   Download, Upload, FolderKanban, CheckSquare, Square, ListChecks,
   PieChart as PieChartIconLucide, TrendingUp, Activity, FilterX, Lock, Columns,
   PlayCircle, Reply, Tag, GripVertical, Trophy, Medal, Menu, ChevronLeft, ChevronRight,
-  Link2, ExternalLink
+  Link2, ExternalLink, NotebookPen
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
@@ -297,6 +297,12 @@ export default function App() {
 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [notes, setNotes] = useState<any[]>([]);
+  const [showNotes, setShowNotes] = useState(false);
+  const [newNoteContent, setNewNoteContent] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null);
+  const [editingNoteContent, setEditingNoteContent] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
  
@@ -739,7 +745,7 @@ const filteredReportTasks = tasks.filter(task => {
     let intervalId: NodeJS.Timeout;
     const checkSession = async () => {
       if (isLoggedIn) {
-        await fetchAreas(); await fetchUsers(); await fetchProjects(); await fetchNotifications();
+        await fetchAreas(); await fetchUsers(); await fetchProjects(); await fetchNotifications(); await fetchNotes();
         intervalId = setInterval(() => { fetchNotifications(); }, 15000);
       } else handleLogout(); 
       setLoading(false);
@@ -781,6 +787,42 @@ const filteredReportTasks = tasks.filter(task => {
         else setSelectedResponsibles([]);
     } else setSelectedResponsibles([]);
   }, [editingItem, currentView, areas, allUsers, editingTaskFromProject]);
+
+  const fetchNotes = async () => {
+    try {
+      const res = await fetch('/api/notes');
+      if (res.ok) { const data = await res.json(); setNotes(Array.isArray(data) ? data : []); }
+    } catch (err) {}
+  };
+
+  const handleCreateNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newNoteContent.trim()) return;
+    setIsSavingNote(true);
+    try {
+      const res = await fetch('/api/notes', { method: 'POST', body: JSON.stringify({ content: newNoteContent.trim() }) });
+      if (res.ok) { setNewNoteContent(''); fetchNotes(); }
+      else alert((await res.json()).error || 'No se pudo crear la nota.');
+    } catch (err) { alert('Error de conexión al crear la nota.'); } finally { setIsSavingNote(false); }
+  };
+
+  const handleUpdateNote = async () => {
+    if (!editingNoteId || !editingNoteContent.trim()) return;
+    setIsSavingNote(true);
+    try {
+      const res = await fetch(`/api/notes/${editingNoteId}`, { method: 'PUT', body: JSON.stringify({ content: editingNoteContent.trim() }) });
+      if (res.ok) { setEditingNoteId(null); setEditingNoteContent(''); fetchNotes(); }
+      else alert((await res.json()).error || 'No se pudo actualizar la nota.');
+    } catch (err) { alert('Error de conexión al actualizar la nota.'); } finally { setIsSavingNote(false); }
+  };
+
+  const handleDeleteNote = async (noteId: number) => {
+    if (!window.confirm('¿Eliminar esta nota?')) return;
+    try {
+      const res = await fetch(`/api/notes/${noteId}`, { method: 'DELETE' });
+      if (res.ok) fetchNotes(); else alert('No se pudo eliminar la nota.');
+    } catch (err) { alert('Error de conexión al eliminar la nota.'); }
+  };
 
   const markNotificationsRead = async () => {
     try { await fetch('/api/notifications/read', { method: 'PUT' }); fetchNotifications(); } catch (err) {}
@@ -2598,7 +2640,7 @@ case 'responsable':
                   )}
 
                   <div className="relative">
-                    <button onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) markNotificationsRead(); }} className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 relative transition-all active:scale-95">
+                    <button onClick={() => { setShowNotifications(!showNotifications); setShowNotes(false); if (!showNotifications) markNotificationsRead(); }} className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 relative transition-all active:scale-95">
                       <Bell size={20} />
                       {notifications.some(n => !n.read) && <span className="absolute top-2 right-2 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full" />}
                     </button>
@@ -2615,6 +2657,52 @@ case 'responsable':
                                 <div key={n.id} onClick={() => handleNotificationClick(n)} className={`cursor-pointer p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors ${!n.read ? 'bg-blue-50/30' : ''}`}>
                                   <p className="text-xs text-slate-700 leading-relaxed">{n.message}</p>
                                   <span className="text-[10px] text-slate-400 mt-1 block">{new Date(n.created_at).toLocaleString()}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+
+                  <div className="relative">
+                    <button onClick={() => { setShowNotes(!showNotes); setShowNotifications(false); if (!showNotes) fetchNotes(); }} title="Mis Notas" className="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 relative transition-all active:scale-95">
+                      <NotebookPen size={20} />
+                    </button>
+                    <AnimatePresence>
+                      {showNotes && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden z-50">
+                          <div className="p-4 border-b border-slate-50 bg-amber-50/60 flex justify-between items-center">
+                            <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2"><NotebookPen size={14} className="text-amber-500" /> Mis Notas</h4>
+                            <span className="text-[10px] font-bold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">{notes.length} {notes.length === 1 ? 'Nota' : 'Notas'}</span>
+                          </div>
+                          <form onSubmit={handleCreateNote} className="p-3 border-b border-slate-100 flex gap-2">
+                            <input type="text" value={newNoteContent} onChange={(e) => setNewNoteContent(e.target.value)} placeholder="Escribir nueva nota..." className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 min-w-0" />
+                            <button type="submit" disabled={isSavingNote || !newNoteContent.trim()} title="Agregar nota" className="px-3 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-40 transition-all shrink-0 active:scale-95"><Plus size={16} /></button>
+                          </form>
+                          <div className="max-h-80 overflow-y-auto">
+                            {notes.length === 0 ? <div className="p-8 text-center text-slate-400 text-sm italic">Sin notas todavía. Apunta tus pendientes aquí.</div> : (
+                              notes.map(note => (
+                                <div key={note.id} className="p-4 border-b border-slate-50 last:border-0 hover:bg-amber-50/40 transition-colors group">
+                                  {editingNoteId === note.id ? (
+                                    <div className="space-y-2">
+                                      <textarea value={editingNoteContent} onChange={(e) => setEditingNoteContent(e.target.value)} rows={3} autoFocus className="w-full px-3 py-2 text-xs border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none" />
+                                      <div className="flex justify-end gap-2">
+                                        <button type="button" onClick={() => { setEditingNoteId(null); setEditingNoteContent(''); }} className="px-3 py-1 text-xs font-bold text-slate-500 hover:bg-slate-100 rounded-lg transition-all">Cancelar</button>
+                                        <button type="button" onClick={handleUpdateNote} disabled={isSavingNote || !editingNoteContent.trim()} className="px-3 py-1 text-xs font-bold bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-40 transition-all">Guardar</button>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-start gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap break-words">{note.content}</p>
+                                        <span className="text-[10px] text-slate-400 mt-1 block">{new Date(note.updated_at).toLocaleString()}</span>
+                                      </div>
+                                      <button type="button" onClick={() => { setEditingNoteId(note.id); setEditingNoteContent(note.content); }} className="p-1.5 text-slate-300 hover:text-amber-600 transition-colors opacity-0 group-hover:opacity-100 shrink-0" title="Editar nota"><Edit2 size={14} /></button>
+                                      <button type="button" onClick={() => handleDeleteNote(note.id)} className="p-1.5 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100 shrink-0" title="Eliminar nota"><Trash2 size={14} /></button>
+                                    </div>
+                                  )}
                                 </div>
                               ))
                             )}
