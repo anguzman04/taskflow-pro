@@ -1,12 +1,12 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-10_
+_Última actualización: 2026-06-11_
 
 ---
 
 ## Estado General
 El proyecto está activo y en desarrollo continuo. Backend y frontend operativos. BD PostgreSQL sincronizada.
-Último commit pusheado: `53acdb5` — feat: sidebar colapsable para aprovechar mejor el espacio de pantalla.
+Último commit pusheado: `015d5f8` — feat: evidencias tipo enlace además de archivos (estilo MS Planner).
 
 ---
 
@@ -140,6 +140,31 @@ Call sites actualizados para construir descripción de filtros activos en la fil
 - Móvil sin cambios: sigue funcionando como overlay con botón hamburguesa.
 
 - **Commit:** `53acdb5` — pusheado a `main`.
+
+---
+
+## Completado en sesión 2026-06-11
+
+### 14. Evidencias tipo enlace además de archivos (estilo Microsoft Planner)
+
+**Backend:**
+- Campo nuevo `type` en modelo `Attachment` (`"file"` | `"link"`, default `"file"`); BD sincronizada con `prisma db push`.
+- Endpoint nuevo `POST /api/attachments/:taskId/link` en `attachmentController.js`:
+  - Normaliza la URL anteponiendo `https://` si no trae protocolo.
+  - Valida hostname con regex (con punto o `localhost`) porque `new URL()` solo es demasiado permisivo y aceptaba URLs basura.
+  - Título opcional; si no se envía, se usa la URL como nombre.
+  - Deja huella en auditoría: "EVIDENCIA ENLACE AGREGADO".
+- `deleteEvidence` (taskController.js): omite el borrado físico en disco cuando `type === 'link'` (guard adicional: el filepath debe empezar con `/api/uploads/`).
+
+**Frontend (pestaña Evidencias del modal de detalles):**
+- Pie con dos opciones en grid: "Subir archivo" (igual que antes) y "Agregar enlace" (nuevo).
+- Form desplegable animado con URL + nombre para mostrar opcional.
+- Tarjetas de enlace: ícono azul `Link2`, nombre clickeable que abre en pestaña nueva, dominio + fecha como subtítulo.
+- Permisos: abrir enlace es libre para todos; descargar archivos sigue gateado por `can_download_evidence`; eliminar (ambos tipos) sigue gateado por `can_delete_evidence` o admin.
+
+**Verificación:** probado e2e con script + token JWT firmado contra el servidor real (crear con normalización, URL inválida → 400, listado con `type`, eliminación limpia). Datos de prueba eliminados.
+
+- **Commit:** `015d5f8` — pusheado a `main`.
 
 ---
 
