@@ -6,7 +6,7 @@ _Última actualización: 2026-06-11_
 
 ## Estado General
 El proyecto está activo y en desarrollo continuo. Backend y frontend operativos. BD PostgreSQL sincronizada.
-Último commit pusheado: `015d5f8` — feat: evidencias tipo enlace además de archivos (estilo MS Planner).
+Último commit pusheado: `55b973f` — feat: bloc de notas personal por usuario (Mis Notas).
 
 ---
 
@@ -165,6 +165,26 @@ Call sites actualizados para construir descripción de filtros activos en la fil
 **Verificación:** probado e2e con script + token JWT firmado contra el servidor real (crear con normalización, URL inválida → 400, listado con `type`, eliminación limpia). Datos de prueba eliminados.
 
 - **Commit:** `015d5f8` — pusheado a `main`.
+
+### 15. Bloc de notas personal "Mis Notas"
+
+**Backend:**
+- Modelo nuevo `Note` en Prisma (`id`, `user_id`, `content`, `created_at`, `updated_at`) + relación `notes Note[]` en `User`; BD sincronizada con `prisma db push`.
+- Controlador nuevo `noteController.js` con CRUD completo, todo scoped al usuario del token:
+  - `GET /api/notes` — solo las notas propias, ordenadas por última edición.
+  - `POST /api/notes` — rechaza notas vacías y mayores a 2000 caracteres.
+  - `PUT /api/notes/:id` y `DELETE /api/notes/:id` — devuelven 404 si la nota no existe o pertenece a otro usuario.
+
+**Frontend (header, junto a la campana):**
+- Ícono `NotebookPen` que abre un panel desplegable estilo notificaciones con tema ámbar.
+- Alta rápida con input + botón `+`; edición inline con textarea (Guardar/Cancelar); eliminación con confirmación.
+- Cada nota muestra contenido (respeta saltos de línea) y fecha de última edición.
+- Exclusión mutua: abrir notas cierra notificaciones y viceversa.
+- Las notas viven en BD → el usuario las conserva desde cualquier equipo/navegador.
+
+**Verificación:** probado e2e con dos usuarios distintos — CRUD completo, validación de vacíos, y aislamiento (un usuario no ve ni puede borrar notas ajenas; 404).
+
+- **Commit:** `55b973f` — pusheado a `main`.
 
 ---
 
