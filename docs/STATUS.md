@@ -1,12 +1,12 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-05_
+_Última actualización: 2026-06-10_
 
 ---
 
 ## Estado General
 El proyecto está activo y en desarrollo continuo. Backend y frontend operativos. BD PostgreSQL sincronizada.
-Último commit pusheado: `282f6b0` — feat: modal solo lectura para tareas completadas, fix bug form proyectos y ajustes de filtros.
+Último commit pusheado: `53acdb5` — feat: sidebar colapsable para aprovechar mejor el espacio de pantalla.
 
 ---
 
@@ -127,6 +127,19 @@ Call sites actualizados para construir descripción de filtros activos en la fil
 - Valor cambiado de `900000` ms (15 min) → `1800000` ms (30 min) en el `useEffect` de detección de actividad en `Dashboard.tsx`.
 
 - **Commit:** `282f6b0` — pusheado a `main`.
+
+---
+
+## Completado en sesión 2026-06-10
+
+### 13. Sidebar colapsable (desktop)
+- Nuevo estado `isSidebarCollapsed` + `toggleSidebarCollapsed` en `Dashboard.tsx`, persistido en localStorage (`taskflow_sidebar_collapsed`).
+- Botón circular flotante con chevron en el borde derecho del sidebar (`-right-3 top-7`, visible solo en `md:`).
+- Modo contraído: ancho `w-64` → `md:w-20`, solo íconos centrados; textos de menú, nombre "TaskFlow Pro" y datos de usuario ocultos con `md:hidden`. Tooltips nativos (`title`) en cada ítem.
+- Transición animada 300ms (`transition-all`); el contenido principal se expande automáticamente (layout flex).
+- Móvil sin cambios: sigue funcionando como overlay con botón hamburguesa.
+
+- **Commit:** `53acdb5` — pusheado a `main`.
 
 ---
 
