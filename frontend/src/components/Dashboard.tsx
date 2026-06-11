@@ -7,7 +7,7 @@ import {
   LogOut, Bell, Eye, MessageSquare, Paperclip, History,
   Download, Upload, FolderKanban, CheckSquare, Square, ListChecks,
   PieChart as PieChartIconLucide, TrendingUp, Activity, FilterX, Lock, Columns,
-  PlayCircle, Reply, Tag, GripVertical, Trophy, Medal, Menu, ChevronLeft
+  PlayCircle, Reply, Tag, GripVertical, Trophy, Medal, Menu, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
@@ -201,6 +201,12 @@ type DetailsTab = 'comments' | 'attachments' | 'subtasks';
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => localStorage.getItem('taskflow_sidebar_collapsed') === '1');
+  const toggleSidebarCollapsed = () => setIsSidebarCollapsed(prev => {
+    const next = !prev;
+    localStorage.setItem('taskflow_sidebar_collapsed', next ? '1' : '0');
+    return next;
+  });
   const [currentView, setCurrentView] = useState<View>('tasks');
   const [taskTab, setTaskTab] = useState<'personal' | 'team'>('personal');
   const [taskDisplayMode, setTaskDisplayMode] = useState<'list' | 'kanban'>('list');
@@ -2473,11 +2479,20 @@ case 'responsable':
         )}
       </AnimatePresence>
 
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 h-screen shrink-0 shadow-xl md:shadow-none`}>
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 ${isSidebarCollapsed ? 'md:w-20' : 'md:w-64'} bg-white border-r border-slate-200 flex flex-col transform transition-all duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:sticky md:top-0 h-screen shrink-0 shadow-xl md:shadow-none`}>
+        {/* Botón contraer/expandir (solo desktop) */}
+        <button
+          onClick={toggleSidebarCollapsed}
+          title={isSidebarCollapsed ? 'Expandir menú' : 'Contraer menú'}
+          className="hidden md:flex absolute -right-3 top-7 z-50 w-6 h-6 items-center justify-center bg-white border border-slate-200 rounded-full shadow-md text-slate-500 hover:text-blue-600 hover:border-blue-300 transition-colors"
+        >
+          {isSidebarCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
+
+        <div className={`p-6 border-b border-slate-100 flex items-center justify-between ${isSidebarCollapsed ? 'md:p-4 md:justify-center' : ''}`}>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white"><LayoutDashboard size={18} /></div>
-            TaskFlow Pro
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shrink-0"><LayoutDashboard size={18} /></div>
+            <span className={isSidebarCollapsed ? 'md:hidden' : ''}>TaskFlow Pro</span>
           </h1>
           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-2 text-slate-400 hover:bg-slate-50 rounded-lg">
             <ChevronLeft size={20} />
@@ -2485,25 +2500,25 @@ case 'responsable':
         </div>
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <button onClick={() => { setCurrentView('tasks'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'tasks' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FileText size={18} /> Panel de Actividades</button>
-          {canViewProjects && <button onClick={() => { setCurrentView('projects'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'projects' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FolderKanban size={18} /> Gestión de Proyectos</button>}
-          {canViewReports && <button onClick={() => { setCurrentView('reports'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'reports' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><PieChartIconLucide size={18} /> Reportes</button>}
-          {canViewUsers && <button onClick={() => { setCurrentView('users'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'users' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={18} /> Gestión de Usuarios</button>}
-          {canViewAreas && <button onClick={() => { setCurrentView('areas'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} /> Gestión de áreas</button>}
-          {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => { setCurrentView('control'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} /> Control de Gestión </button>}
+          <button onClick={() => { setCurrentView('tasks'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Panel de Actividades" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'tasks' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FileText size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Panel de Actividades</span></button>
+          {canViewProjects && <button onClick={() => { setCurrentView('projects'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de Proyectos" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'projects' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FolderKanban size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de Proyectos</span></button>}
+          {canViewReports && <button onClick={() => { setCurrentView('reports'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Reportes" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'reports' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><PieChartIconLucide size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Reportes</span></button>}
+          {canViewUsers && <button onClick={() => { setCurrentView('users'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de Usuarios" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'users' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de Usuarios</span></button>}
+          {canViewAreas && <button onClick={() => { setCurrentView('areas'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de áreas" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de áreas</span></button>}
+          {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => { setCurrentView('control'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Control de Gestión" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Control de Gestión</span></button>}
         </nav>
 
         <div className="p-4 border-t border-slate-100 bg-slate-50/50">
           {currentUser && (
-            <div className="flex items-center gap-3 mb-4 px-2">
-              <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 border border-blue-200 flex items-center justify-center font-bold text-sm shrink-0 shadow-sm uppercase">{String(currentUser.nombre || '').charAt(0)}{String(currentUser.apellido || '').charAt(0)}</div>
-              <div className="min-w-0 overflow-hidden">
+            <div className={`flex items-center gap-3 mb-4 px-2 ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''}`}>
+              <div title={`${currentUser.nombre} ${currentUser.apellido}`} className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 border border-blue-200 flex items-center justify-center font-bold text-sm shrink-0 shadow-sm uppercase">{String(currentUser.nombre || '').charAt(0)}{String(currentUser.apellido || '').charAt(0)}</div>
+              <div className={`min-w-0 overflow-hidden ${isSidebarCollapsed ? 'md:hidden' : ''}`}>
                 <p className="text-sm font-bold text-slate-900 truncate">{currentUser.nombre} {currentUser.apellido}</p>
                 <p className="text-[10px] font-medium text-slate-500 truncate">{(currentUser as any).cargo || currentUser.email}</p>
               </div>
             </div>
           )}
-          <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all"><LogOut size={18} /> Cerrar Sesión</button>
+          <button onClick={handleLogout} title="Cerrar Sesión" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''}`}><LogOut size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Cerrar Sesión</span></button>
         </div>
       </aside>
 
