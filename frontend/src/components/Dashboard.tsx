@@ -7,7 +7,8 @@ import {
   LogOut, Bell, Eye, MessageSquare, Paperclip, History,
   Download, Upload, FolderKanban, CheckSquare, Square, ListChecks,
   PieChart as PieChartIconLucide, TrendingUp, Activity, FilterX, Lock, Columns,
-  PlayCircle, Reply, Tag, GripVertical, Trophy, Medal, Menu, ChevronLeft, ChevronRight
+  PlayCircle, Reply, Tag, GripVertical, Trophy, Medal, Menu, ChevronLeft, ChevronRight,
+  Link2, ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
@@ -313,6 +314,10 @@ export default function App() {
 
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [showLinkForm, setShowLinkForm] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkTitle, setLinkTitle] = useState('');
+  const [isAddingLink, setIsAddingLink] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [detailsTab, setDetailsTab] = useState<DetailsTab>('comments');
   
@@ -953,6 +958,28 @@ const handleUpdateComment = async (commentId: number) => {
     } catch (err) {} finally { setIsUploading(false); }
   };
 
+  const handleAddLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTask || !linkUrl.trim()) return;
+    setIsAddingLink(true);
+    try {
+      const res = await fetch(`/api/attachments/${selectedTask.id}/link`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: linkUrl.trim(), title: linkTitle.trim() })
+      });
+      if (res.ok) {
+        setLinkUrl(''); setLinkTitle(''); setShowLinkForm(false);
+        fetchTaskDetails(selectedTask.id!);
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "No se pudo agregar el enlace.");
+      }
+    } catch (err) {
+      alert("Error de conexión al agregar el enlace.");
+    } finally { setIsAddingLink(false); }
+  };
+
   useEffect(() => {
     if (currentView === 'control') fetchControlTasks();
   }, [currentView, controlAreaId, currentUser, tasks, allUsers, areas]);
@@ -1181,7 +1208,7 @@ const handleQuickUpdate = async (taskId: number, field: string, value: any) => {
 
 
 const handleDeleteEvidence = async (evidenceId: number) => {
-    if (!window.confirm("⚠️ ¿Estás seguro de que deseas eliminar esta evidencia? Esta acción no se puede deshacer y borrará el archivo permanentemente.")) return;
+    if (!window.confirm("⚠️ ¿Estás seguro de que deseas eliminar esta evidencia? Esta acción no se puede deshacer y la borrará permanentemente.")) return;
 
     try {
       const res = await fetch(`/api/tasks/evidence/${evidenceId}`, {
@@ -3545,7 +3572,7 @@ case 'responsable':
                      <div>
                        <div className="flex items-center gap-3 mb-1"><h3 className="text-xl font-black text-slate-900">{selectedTask.actividad}</h3><span className={`text-[10px] font-bold px-2 py-1 rounded-md border uppercase ${getStatusColor(selectedTask.estado)}`}>{selectedTask.estado}</span></div>
                      </div>
-                     <button onClick={() => setIsDetailsModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button>
+                     <button onClick={() => { setIsDetailsModalOpen(false); setShowLinkForm(false); setLinkUrl(''); setLinkTitle(''); }} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X size={20} /></button>
                    </div>
                    
                    <div className="flex border-b border-slate-100 px-6 bg-white shrink-0">
@@ -3713,22 +3740,34 @@ case 'responsable':
                             <div className="flex-1 overflow-y-auto space-y-4 mb-4 pr-2">
                                {attachments.length === 0 ? <div className="flex flex-col items-center justify-center h-full text-slate-400"><Paperclip size={32} className="mb-2 opacity-50" /><span className="text-sm font-medium">No hay evidencias adjuntas</span></div> : (
                                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                     {attachments.map(att => (
+                                     {attachments.map(att => {
+                                        const isLink = att.type === 'link';
+                                        const linkHost = isLink ? (() => { try { return new URL(att.filepath).hostname; } catch { return ''; } })() : '';
+                                        return (
                                         <div key={att.id} className="flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors group">
-                                           <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg shrink-0"><FileText size={20} /></div>
-                                           <div className="flex-1 min-w-0"><p className="text-sm font-bold text-slate-700 truncate" title={att.filename}>{att.filename || 'Archivo adjunto'}</p><p className="text-[10px] text-slate-400 font-medium">{new Date(att.uploaded_at).toLocaleString()}</p></div>
-                                          // <a href={att.filepath} target="_blank" rel="noopener noreferrer" className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-emerald-600 hover:border-emerald-200 rounded-lg shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100"><Download size={16}/></a>
-                                           {/* Solo los administradores o quienes tengan el permiso explícito verán el botón de descarga */}
-		{(currentUser?.is_admin || (currentUser as any)?.can_download_evidence) && (
+                                           <div className={`p-2 rounded-lg shrink-0 ${isLink ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>{isLink ? <Link2 size={20} /> : <FileText size={20} />}</div>
+                                           <div className="flex-1 min-w-0">
+                                              {isLink ? (
+                                                 <a href={att.filepath} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-blue-700 hover:underline truncate block" title={att.filepath}>{att.filename || att.filepath}</a>
+                                              ) : (
+                                                 <p className="text-sm font-bold text-slate-700 truncate" title={att.filename}>{att.filename || 'Archivo adjunto'}</p>
+                                              )}
+                                              <p className="text-[10px] text-slate-400 font-medium truncate">{linkHost ? `${linkHost} · ` : ''}{new Date(att.uploaded_at).toLocaleString()}</p>
+                                           </div>
+		{/* Enlaces: abrir es libre. Archivos: descarga solo con permiso explícito o admin */}
+		{isLink ? (
+		  <a href={att.filepath} target="_blank" rel="noopener noreferrer" className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-200 rounded-lg shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100" title="Abrir enlace">
+			<ExternalLink size={16}/>
+		  </a>
+		) : (currentUser?.is_admin || (currentUser as any)?.can_download_evidence) && (
 		  <a href={att.filepath} target="_blank" rel="noopener noreferrer" className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-emerald-600 hover:border-emerald-200 rounded-lg shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100" title="Descargar evidencia">
 			<Download size={16}/>
 		  </a>
 		)}
-		{/* 👇 NUEVO: Botón de Eliminación con Candado de Permiso (Línea Nueva) */}
 		{(currentUser?.is_admin || (currentUser as any)?.can_delete_evidence) && (
-		  <button 
+		  <button
 			type="button"
-			onClick={() => handleDeleteEvidence(att.id)} 
+			onClick={() => handleDeleteEvidence(att.id)}
 			className="p-2 bg-white border border-slate-200 text-slate-500 hover:text-red-600 hover:border-red-200 rounded-lg shadow-sm transition-all shrink-0 opacity-0 group-hover:opacity-100 ml-1"
 			title="Eliminar evidencia"
 		  >
@@ -3739,15 +3778,34 @@ case 'responsable':
 
 
                                            </div>
-                                     ))}
+                                     );})}
                                   </div>
                                )}
                             </div>
-                            <form className="mt-auto pt-4 border-t border-slate-100">
-                               <label className="flex items-center justify-center gap-2 w-full p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-emerald-50 hover:border-emerald-400 hover:text-emerald-600 transition-all text-slate-500">
-                                  {isUploading ? <span className="text-sm font-bold animate-pulse">Subiendo archivo...</span> : <><Upload size={18} /><span className="text-sm font-bold">Subir nueva evidencia</span><input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} /></>}
-                               </label>
-                            </form>
+                            <div className="mt-auto pt-4 border-t border-slate-100 space-y-3">
+                               <AnimatePresence>
+                                  {showLinkForm && (
+                                     <motion.form initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} onSubmit={handleAddLink} className="overflow-hidden">
+                                        <div className="p-4 bg-blue-50/60 border border-blue-200 rounded-xl space-y-2">
+                                           <input type="text" value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://ejemplo.com/documento" autoFocus className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
+                                           <input type="text" value={linkTitle} onChange={(e) => setLinkTitle(e.target.value)} placeholder="Nombre para mostrar (opcional)" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white" />
+                                           <div className="flex justify-end gap-2 pt-1">
+                                              <button type="button" onClick={() => { setShowLinkForm(false); setLinkUrl(''); setLinkTitle(''); }} className="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-lg transition-all">Cancelar</button>
+                                              <button type="submit" disabled={isAddingLink || !linkUrl.trim()} className="px-4 py-2 text-sm font-bold bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm">{isAddingLink ? 'Agregando...' : 'Agregar enlace'}</button>
+                                           </div>
+                                        </div>
+                                     </motion.form>
+                                  )}
+                               </AnimatePresence>
+                               <div className="grid grid-cols-2 gap-3">
+                                  <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-slate-300 rounded-xl cursor-pointer hover:bg-emerald-50 hover:border-emerald-400 hover:text-emerald-600 transition-all text-slate-500">
+                                     {isUploading ? <span className="text-sm font-bold animate-pulse">Subiendo archivo...</span> : <><Upload size={18} /><span className="text-sm font-bold">Subir archivo</span><input type="file" className="hidden" onChange={handleFileUpload} disabled={isUploading} /></>}
+                                  </label>
+                                  <button type="button" onClick={() => setShowLinkForm(prev => !prev)} className={`flex items-center justify-center gap-2 p-4 border-2 border-dashed rounded-xl transition-all ${showLinkForm ? 'bg-blue-50 border-blue-400 text-blue-600' : 'border-slate-300 text-slate-500 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600'}`}>
+                                     <Link2 size={18} /><span className="text-sm font-bold">Agregar enlace</span>
+                                  </button>
+                               </div>
+                            </div>
                          </div>
                       )}
                    </div>

@@ -67,6 +67,59 @@ const attachmentController = {
       console.error("Error al subir archivo:", error);
       res.status(500).json({ error: "Error interno al subir evidencia" });
     }
+  },
+
+  addLink: async (req, res) => {
+    try {
+      const taskId = parseInt(req.params.taskId);
+      const { url, title } = req.body;
+
+      if (!url || typeof url !== 'string' || !url.trim()) {
+        return res.status(400).json({ error: "Debes proporcionar la URL del enlace" });
+      }
+
+      // Normalizar: anteponer https:// si no trae protocolo
+      let normalizedUrl = url.trim();
+      if (!/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = `https://${normalizedUrl}`;
+
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(normalizedUrl);
+      } catch {
+        return res.status(400).json({ error: "La URL proporcionada no es válida" });
+      }
+
+      // El parser de URL es muy permisivo: exigir un hostname razonable (con punto o localhost)
+      const hostname = parsedUrl.hostname || '';
+      if (hostname !== 'localhost' && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(hostname)) {
+        return res.status(400).json({ error: "La URL proporcionada no es válida" });
+      }
+
+      const displayName = (title || '').trim() || normalizedUrl;
+
+      const newAttachment = await prisma.attachment.create({
+        data: {
+          task_id: taskId,
+          filename: displayName,
+          filepath: normalizedUrl,
+          type: 'link'
+        }
+      });
+
+      await prisma.auditLog.create({
+        data: {
+          task_id: taskId,
+          user_id: req.userId,
+          action: "EVIDENCIA ENLACE AGREGADO",
+          details: `Se agregó el enlace: ${displayName} (${normalizedUrl})`
+        }
+      });
+
+      res.status(201).json(newAttachment);
+    } catch (error) {
+      console.error("Error al agregar enlace:", error);
+      res.status(500).json({ error: "Error interno al agregar enlace" });
+    }
   }
 };
 

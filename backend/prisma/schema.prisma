@@ -147,6 +147,7 @@ model Attachment {
   task_id     Int
   filename    String
   filepath    String
+  type        String   @default("file") // "file" | "link"
   uploaded_at DateTime @default(now())
   
   task        Task     @relation(fields: [task_id], references: [id], onDelete: Cascade)

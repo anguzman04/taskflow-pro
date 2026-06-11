@@ -744,8 +744,8 @@ deleteEvidence: async (req, res) => {
         return res.status(404).json({ error: "La evidencia ya no existe o ya fue eliminada." });
       }
 
-      // 3. ELIMINACIÓN FÍSICA: Ajuste de ruta para coincidir con tu camuflaje
-      if (evidence.filepath) {
+      // 3. ELIMINACIÓN FÍSICA: solo aplica a archivos subidos; los enlaces no tienen archivo en disco
+      if (evidence.type !== 'link' && evidence.filepath && evidence.filepath.startsWith('/api/uploads/')) {
         // Extraemos solo el nombre real del archivo guardado en disco
         const actualFileName = evidence.filepath.replace('/api/uploads/', '');
         // Construimos la ruta absoluta hacia tu carpeta 'uploads' física
@@ -771,7 +771,7 @@ deleteEvidence: async (req, res) => {
           task_id: evidence.task_id,
           user_id: user.id,
           action: "EVIDENCIA ELIMINADA",
-          details: `Se eliminó permanentemente el archivo adjunto: ${evidence.filename}`
+          details: `Se eliminó permanentemente la evidencia (${evidence.type === 'link' ? 'enlace' : 'archivo adjunto'}): ${evidence.filename}`
         }
       });
 

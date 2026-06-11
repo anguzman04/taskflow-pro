@@ -102,5 +102,6 @@ router.put('/notifications/read', notificationController.markAsRead);
 router.get('/audit-logs/:taskId', auditLogController.getByTask);
 router.get('/attachments/:taskId', attachmentController.getByTask);
 router.post('/attachments/:taskId', attachmentController.uploadMiddleware, attachmentController.uploadFile);
+router.post('/attachments/:taskId/link', attachmentController.addLink);
 
 module.exports = router;
