@@ -1,7 +1,46 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, LockKeyhole, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; // Asegúrate de tener framer-motion instalado
+import { PublicClientApplication } from '@azure/msal-browser';
+
+// --- Microsoft Entra ID (SSO) ---
+const AZURE_CLIENT_ID = import.meta.env.VITE_AZURE_CLIENT_ID;
+const AZURE_TENANT_ID = import.meta.env.VITE_AZURE_TENANT_ID;
+const ssoEnabled = Boolean(AZURE_CLIENT_ID && AZURE_TENANT_ID);
+
+let msalInstance = null;
+const getMsalInstance = async () => {
+  if (!msalInstance) {
+    msalInstance = new PublicClientApplication({
+      auth: {
+        clientId: AZURE_CLIENT_ID,
+        authority: `https://login.microsoftonline.com/${AZURE_TENANT_ID}`,
+        redirectUri: window.location.origin,
+        navigateToLoginRequestUrl: false
+      },
+      cache: { 
+        cacheLocation: 'sessionStorage',
+        storeAuthStateInCookie: false 
+      },
+      system: {
+        navigationTimeout: 60000,
+        iframeHashTimeout: 10000
+      }
+    });
+    await msalInstance.initialize();
+  }
+  return msalInstance;
+};
+
+const MicrosoftLogo = () => (
+  <svg width="18" height="18" viewBox="0 0 21 21">
+    <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+    <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+    <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+    <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+  </svg>
+);
 
 const Login = () => {
   const [email, setEmail] = useState('');
@@ -13,6 +52,22 @@ const Login = () => {
   const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+
+  // 🚀 PROCESAR REDIRECCIÓN/POPUP AL CARGAR
+  useEffect(() => {
+    const processMsal = async () => {
+      if (ssoEnabled) {
+        try {
+          const msal = await getMsalInstance();
+          // Esto es vital: procesa la respuesta si estamos en el popup
+          await msal.handleRedirectPromise();
+        } catch (error) {
+          console.error("Error al inicializar MSAL en mount:", error);
+        }
+      }
+    };
+    processMsal();
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault(); 
@@ -45,6 +100,52 @@ const Login = () => {
     } catch (error) {
       console.error("Error de conexión:", error);
       alert("Error de conexión con el servidor. Verifica que el backend esté corriendo.");
+      setIsLoading(false);
+    }
+  };
+
+  const handleMicrosoftLogin = async () => {
+    setIsLoading(true);
+    console.log("Iniciando flujo de Microsoft SSO...");
+    try {
+      const msal = await getMsalInstance();
+      console.log("MSAL inicializado, abriendo popup...");
+      
+      const result = await msal.loginPopup({
+        scopes: ['openid', 'profile', 'email'],
+        prompt: 'select_account'
+      });
+      
+      console.log("Respuesta de Microsoft recibida. Enviando ID Token al backend...");
+      
+      const res = await fetch('/api/auth/microsoft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken: result.idToken })
+      });
+      
+      const data = await res.json();
+      console.log("Respuesta del backend recibida:", { status: res.status, ok: res.ok, data });
+
+      if (res.ok && data.token) {
+        console.log("Autenticación exitosa. Guardando token y redirigiendo a /dashboard...");
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        // Pequeña pausa para asegurar que el localStorage se asiente antes del redirect
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 100);
+      } else {
+        console.error("El backend rechazó la autenticación:", data.error);
+        alert(data.error || "No fue posible iniciar sesión con Microsoft.");
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error("Error en el proceso de login Microsoft:", error);
+      if (error?.errorCode !== 'user_cancelled') {
+        const detalle = [error?.errorCode, error?.errorMessage || error?.message].filter(Boolean).join(' — ');
+        alert(`No fue posible iniciar sesión con Microsoft.${detalle ? `\n\nDetalle técnico: ${detalle}` : ''}`);
+      }
       setIsLoading(false);
     }
   };
@@ -146,7 +247,25 @@ const Login = () => {
                 >
                   {isLoading ? 'Verificando...' : 'Iniciar Sesión'}
                 </button>
-                
+
+                {ssoEnabled && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-slate-200" />
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">o continúa con</span>
+                      <div className="flex-1 h-px bg-slate-200" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleMicrosoftLogin}
+                      disabled={isLoading}
+                      className="w-full bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all active:scale-[0.98] shadow-sm disabled:opacity-50 flex items-center justify-center gap-3"
+                    >
+                      <MicrosoftLogo /> Iniciar sesión con Microsoft
+                    </button>
+                  </>
+                )}
+
                 <div className="text-center pt-2">
                   <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
                     ATLANTICQI - BARRANQUILLA

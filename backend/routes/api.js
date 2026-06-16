@@ -17,7 +17,8 @@ const noteController = require('../controllers/noteController');
 // ==========================================
 // 1. RUTAS PÚBLICAS
 // ==========================================
-router.post('/login', authController.login); 
+router.post('/login', authController.login);
+router.post('/auth/microsoft', authController.microsoftLogin);
 router.post('/change-password', authController.changePassword);
 
 // ==========================================

@@ -1,12 +1,12 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-11_
+_Última actualización: 2026-06-16_
 
 ---
 
 ## Estado General
 El proyecto está activo y en desarrollo continuo. Backend y frontend operativos. BD PostgreSQL sincronizada.
-Último commit pusheado: `55b973f` — feat: bloc de notas personal por usuario (Mis Notas).
+SSO con Microsoft Entra ID implementado en código, **pendiente de validar contra Azure** (ver sección 16).
 
 ---
 
@@ -185,6 +185,41 @@ Call sites actualizados para construir descripción de filtros activos en la fil
 **Verificación:** probado e2e con dos usuarios distintos — CRUD completo, validación de vacíos, y aislamiento (un usuario no ve ni puede borrar notas ajenas; 404).
 
 - **Commit:** `55b973f` — pusheado a `main`.
+
+---
+
+## En progreso — sesión 2026-06-16
+
+### 16. Login con Microsoft Entra ID (SSO) — Ruta B (OIDC / Azure AD)
+
+**Decisión:** la empresa usa Microsoft 365, así que se eligió SSO vía Entra ID (no LDAP on-premise). Esquema **híbrido**: el login local con contraseña sigue funcionando; Microsoft es una opción adicional. Sin auto-registro: solo entran correos que ya existen en la tabla `users` (el control de acceso sigue en TaskFlow).
+
+**Backend:**
+- `authController.microsoftLogin`: valida el `idToken` de Microsoft con `jwks-rsa` (firma RS256, `audience` = client ID, `issuer` = `.../v2.0`), busca el correo (case-insensitive) en `users` y emite el JWT propio de la app. 503 si faltan variables, 403 si el correo no está registrado.
+- Ruta pública nueva `POST /api/auth/microsoft` (antes del middleware `verifyToken`).
+- Dependencia nueva: `jwks-rsa`.
+- Variables de entorno: `AZURE_TENANT_ID`, `AZURE_CLIENT_ID`.
+
+**Frontend:**
+- `@azure/msal-browser` (`PublicClientApplication`, `loginPopup`).
+- Botón "Iniciar sesión con Microsoft" en `Login.jsx`, solo visible si las `VITE_AZURE_*` están definidas (`ssoEnabled`).
+- Variables: `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_TENANT_ID` (se incrustan en el build; NO son runtime).
+- Alert con detalle técnico del error + logs de consola para depuración.
+
+**Estado actual (PENDIENTE):**
+- Código completo; rutas de error probadas (503 sin config, 401 token inválido).
+- IDs reales cargados en `.env`; el botón aparece (frontend OK).
+- ⚠️ Al iniciar sesión devuelve "No fue posible iniciar sesión con Microsoft". **Causa más probable: el redirect URI `http://localhost:5173` está registrado en Azure como plataforma _Web_ en vez de _Single-page application (SPA)_** (MSAL.js exige SPA + PKCE → `AADSTS9002326`). Próximo paso: en Azure → App Registration → Authentication, mover el redirect URI a plataforma SPA y reintentar leyendo el detalle en consola (F12).
+
+**Notas de producción:**
+- Backend: definir `AZURE_*` como variables de entorno del servidor (Windows/IIS) y reiniciar Node.
+- Frontend: las `VITE_AZURE_*` deben existir al hacer `npm run build` (build-time, no runtime). Usar `.env.production` o variables de la máquina de build.
+- Azure: registrar la URL HTTPS de producción como redirect URI adicional (localhost es la única excepción a HTTPS).
+
+### Hallazgo de seguridad (corregido en código, acción pendiente del usuario)
+- Los archivos `.env` y `backend/.env` **estaban trackeados en git** (exponían `DATABASE_URL` y `JWT_SECRET` en el historial de GitHub).
+- Corregido: `git rm --cached` de ambos, `.gitignore` añadidos (raíz, backend, frontend) y plantillas `.env.example` creadas.
+- ⚠️ **Acción pendiente del usuario:** rotar la contraseña de PostgreSQL y el `JWT_SECRET`, ya que el historial viejo del repo aún los contiene.
 
 ---
 
