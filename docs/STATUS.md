@@ -1,12 +1,12 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-16_
+_Última actualización: 2026-06-16 (tarde)_
 
 ---
 
 ## Estado General
 El proyecto está activo y en desarrollo continuo. Backend y frontend operativos. BD PostgreSQL sincronizada.
-SSO con Microsoft Entra ID implementado en código, **pendiente de validar contra Azure** (ver sección 16).
+SSO con Microsoft Entra ID: bugs de frontend resueltos; **en pausa esperando config de Azure (plataforma SPA)** — ver sección 16.
 
 ---
 
@@ -206,10 +206,16 @@ Call sites actualizados para construir descripción de filtros activos en la fil
 - Variables: `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_TENANT_ID` (se incrustan en el build; NO son runtime).
 - Alert con detalle técnico del error + logs de consola para depuración.
 
-**Estado actual (PENDIENTE):**
+**Estado actual (EN PAUSA — esperando Azure):**
 - Código completo; rutas de error probadas (503 sin config, 401 token inválido).
 - IDs reales cargados en `.env`; el botón aparece (frontend OK).
-- ⚠️ Al iniciar sesión devuelve "No fue posible iniciar sesión con Microsoft". **Causa más probable: el redirect URI `http://localhost:5173` está registrado en Azure como plataforma _Web_ en vez de _Single-page application (SPA)_** (MSAL.js exige SPA + PKCE → `AADSTS9002326`). Próximo paso: en Azure → App Registration → Authentication, mover el redirect URI a plataforma SPA y reintentar leyendo el detalle en consola (F12).
+- **Sesión de depuración 2026-06-16** — se resolvieron 3 bugs de frontend en cadena:
+  1. `handleRedirectPromise` ejecutándose dentro del popup → `no_token_request_cache_error`. Fix: efecto de montaje protegido para correr solo en la ventana principal (`if (window.opener && window.opener !== window) return`).
+  2. Bandera `interaction_in_progress` colgada de intentos previos. Fix: el efecto de montaje la limpia + recuperación en el `catch`.
+  3. El popup recargaba la app completa y `<Route path="*" → Navigate to /login>` se llevaba el hash con el token antes de que MSAL lo leyera. Fix en `main.jsx`: si la ventana es el popup de MSAL (`window.opener` + hash con `code/state/error`), **no se monta la app** (`isMsalPopup`), dejando el hash quieto para que MSAL lo lea.
+- **Diagnóstico final:** con logging del cliente a archivo (`backend/sso-debug.log` vía endpoint temporal `/api/clientlog`) se confirmó que el flujo llega hasta "abriendo popup" pero **MSAL nunca recibe respuesta** → Microsoft rechaza el redirect dentro del popup.
+- ⚠️ **PENDIENTE (en pausa, usuario revisa con admin de Azure):** registrar `http://localhost:5173` en App Registration → Authentication como plataforma **Single-page application (SPA)**, NO "Web", sin barra final. Causa raíz casi segura (`AADSTS50011` / `AADSTS9002326`).
+- ⚠️ **DEBUG TEMPORAL en el código (quitar antes del commit final):** `ssoDebug`→archivo, endpoint `POST /api/clientlog`, helper `clog` en `Login.jsx`. Los fixes reales (efecto guardado, recuperación en catch, popup-bail de `main.jsx`) SÍ se conservan.
 
 **Notas de producción:**
 - Backend: definir `AZURE_*` como variables de entorno del servidor (Windows/IIS) y reiniciar Node.

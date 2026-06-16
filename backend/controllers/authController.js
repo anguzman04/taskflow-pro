@@ -2,7 +2,17 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
+const fs = require('fs');
+const path = require('path');
 const prisma = new PrismaClient();
+
+// --- DEBUG TEMPORAL SSO: escribe a un archivo para diagnóstico (quitar luego) ---
+const ssoDebug = (msg, obj) => {
+  try {
+    const line = `[${new Date().toISOString()}] ${msg}${obj ? ' ' + JSON.stringify(obj) : ''}\n`;
+    fs.appendFileSync(path.join(__dirname, '../sso-debug.log'), line);
+  } catch (_) {}
+};
 
 // Cliente JWKS para validar tokens de Microsoft Entra ID (se crea una sola vez)
 let msJwksClient = null;
@@ -69,25 +79,46 @@ const authController = {
 
   // Login con Microsoft Entra ID (Azure AD): valida el idToken emitido por Microsoft
   // y, si el correo existe en TaskFlow, emite el JWT propio de la aplicación.
+  // DEBUG TEMPORAL: el frontend envía aquí sus logs para que queden en el archivo (quitar luego)
+  clientLog: (req, res) => {
+    ssoDebug('[CLIENTE] ' + (req.body?.msg || ''), req.body?.data);
+    res.json({ ok: true });
+  },
+
   microsoftLogin: async (req, res) => {
+    ssoDebug('--- Nueva petición /auth/microsoft ---');
     try {
       if (!process.env.AZURE_TENANT_ID || !process.env.AZURE_CLIENT_ID) {
+        ssoDebug('FALLO: faltan AZURE_TENANT_ID/AZURE_CLIENT_ID en el servidor');
         return res.status(503).json({ error: "El inicio de sesión con Microsoft no está configurado en el servidor" });
       }
+      ssoDebug('Config OK', { tenant: process.env.AZURE_TENANT_ID, clientId: process.env.AZURE_CLIENT_ID });
 
       const { idToken } = req.body;
-      if (!idToken) return res.status(400).json({ error: "Falta el token de Microsoft" });
+      if (!idToken) { ssoDebug('FALLO: no llegó idToken en el body'); return res.status(400).json({ error: "Falta el token de Microsoft" }); }
 
-      const claims = await new Promise((resolve, reject) => {
-        jwt.verify(idToken, getMicrosoftSigningKey, {
-          algorithms: ['RS256'],
-          audience: process.env.AZURE_CLIENT_ID,
-          issuer: `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}/v2.0`
-        }, (err, decoded) => err ? reject(err) : resolve(decoded));
-      });
+      // Decodificamos SIN verificar solo para depurar (qué trae el token realmente)
+      const peek = jwt.decode(idToken) || {};
+      ssoDebug('Claims del token (sin verificar)', { aud: peek.aud, iss: peek.iss, tid: peek.tid, preferred_username: peek.preferred_username, email: peek.email, upn: peek.upn });
+
+      let claims;
+      try {
+        claims = await new Promise((resolve, reject) => {
+          jwt.verify(idToken, getMicrosoftSigningKey, {
+            algorithms: ['RS256'],
+            audience: process.env.AZURE_CLIENT_ID,
+            issuer: `https://login.microsoftonline.com/${process.env.AZURE_TENANT_ID}/v2.0`
+          }, (err, decoded) => err ? reject(err) : resolve(decoded));
+        });
+      } catch (verifyErr) {
+        ssoDebug('FALLO en jwt.verify', { name: verifyErr.name, message: verifyErr.message });
+        throw verifyErr;
+      }
+      ssoDebug('Token verificado OK');
 
       const msEmail = String(claims.preferred_username || claims.email || '').toLowerCase().trim();
-      if (!msEmail) return res.status(400).json({ error: "La cuenta de Microsoft no reporta un correo válido" });
+      if (!msEmail) { ssoDebug('FALLO: el token no trae correo'); return res.status(400).json({ error: "La cuenta de Microsoft no reporta un correo válido" }); }
+      ssoDebug('Correo extraído del token', { msEmail });
 
       const user = await prisma.user.findFirst({
         where: { email: { equals: msEmail, mode: 'insensitive' } },
@@ -95,9 +126,11 @@ const authController = {
       });
 
       if (!user) {
+        ssoDebug('FALLO 403: correo NO encontrado en la tabla users', { msEmail });
         console.warn(`[SSO] Intento de login Microsoft con cuenta no registrada: ${msEmail}`);
         return res.status(403).json({ error: `La cuenta ${msEmail} no está registrada en TaskFlow Pro. Contacta al administrador.` });
       }
+      ssoDebug('Usuario encontrado, emitiendo JWT', { id: user.id, email: user.email });
 
       // Los usuarios que entran por Microsoft no pasan por el cambio de contraseña local:
       // su identidad ya fue verificada por Entra ID (incluye MFA si la empresa lo exige).

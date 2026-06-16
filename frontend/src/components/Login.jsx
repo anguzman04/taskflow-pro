@@ -53,24 +53,20 @@ const Login = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // 🚀 PROCESAR REDIRECCIÓN/POPUP AL CARGAR
+  // Al cargar la app: procesa respuestas pendientes y limpia cualquier bandera de
+  // "interacción en progreso" que haya quedado pegada de un intento anterior.
+  // IMPORTANTE: solo en la ventana principal. Dentro del popup de MSAL (mismo origen,
+  // window.opener presente) NO debemos tocar MSAL o rompe el flujo.
   useEffect(() => {
-    const processMsal = async () => {
-      if (ssoEnabled) {
-        try {
-          const msal = await getMsalInstance();
-          // Esto es vital: procesa la respuesta si estamos en el popup
-          await msal.handleRedirectPromise();
-        } catch (error) {
-          console.error("Error al inicializar MSAL en mount:", error);
-        }
-      }
-    };
-    processMsal();
+    if (!ssoEnabled) return;
+    if (window.opener && window.opener !== window) return; // estamos dentro del popup → salir
+    getMsalInstance()
+      .then((msal) => msal.handleRedirectPromise())
+      .catch((err) => console.warn("MSAL init:", err?.errorCode || err?.message));
   }, []);
 
   const handleLogin = async (e) => {
-    e.preventDefault(); 
+    e.preventDefault();
     setIsLoading(true);
 
     try {
@@ -104,45 +100,58 @@ const Login = () => {
     }
   };
 
+  // DEBUG TEMPORAL: manda logs al backend para diagnóstico (además de la consola)
+  const clog = (msg, data) => {
+    console.log(msg, data || '');
+    try {
+      fetch('/api/clientlog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msg, data })
+      });
+    } catch (_) {}
+  };
+
   const handleMicrosoftLogin = async () => {
     setIsLoading(true);
-    console.log("Iniciando flujo de Microsoft SSO...");
+    clog("1. Iniciando flujo de Microsoft SSO");
     try {
       const msal = await getMsalInstance();
-      console.log("MSAL inicializado, abriendo popup...");
-      
+      clog("2. MSAL inicializado, abriendo popup", { redirectUri: window.location.origin });
+
       const result = await msal.loginPopup({
         scopes: ['openid', 'profile', 'email'],
         prompt: 'select_account'
       });
-      
-      console.log("Respuesta de Microsoft recibida. Enviando ID Token al backend...");
-      
+
+      clog("3. Respuesta de Microsoft recibida", { account: result?.account?.username, hasIdToken: !!result?.idToken });
+
       const res = await fetch('/api/auth/microsoft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idToken: result.idToken })
       });
-      
+
       const data = await res.json();
-      console.log("Respuesta del backend recibida:", { status: res.status, ok: res.ok, data });
+      clog("4. Respuesta del backend", { status: res.status, ok: res.ok, error: data?.error, hasToken: !!data?.token });
 
       if (res.ok && data.token) {
-        console.log("Autenticación exitosa. Guardando token y redirigiendo a /dashboard...");
+        clog("5. Login exitoso, redirigiendo a /dashboard");
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
-        // Pequeña pausa para asegurar que el localStorage se asiente antes del redirect
         setTimeout(() => {
           window.location.href = '/dashboard';
         }, 100);
       } else {
-        console.error("El backend rechazó la autenticación:", data.error);
         alert(data.error || "No fue posible iniciar sesión con Microsoft.");
         setIsLoading(false);
       }
     } catch (error) {
-      console.error("Error en el proceso de login Microsoft:", error);
-      if (error?.errorCode !== 'user_cancelled') {
+      clog("ERROR en login Microsoft", { errorCode: error?.errorCode, errorMessage: error?.errorMessage, message: error?.message });
+      if (error?.errorCode === 'interaction_in_progress') {
+        try { const msal = await getMsalInstance(); await msal.handleRedirectPromise(); } catch (_) {}
+        alert("Había un inicio de sesión anterior sin terminar. Ya se limpió, por favor intenta de nuevo.");
+      } else if (error?.errorCode !== 'user_cancelled') {
         const detalle = [error?.errorCode, error?.errorMessage || error?.message].filter(Boolean).join(' — ');
         alert(`No fue posible iniciar sesión con Microsoft.${detalle ? `\n\nDetalle técnico: ${detalle}` : ''}`);
       }
