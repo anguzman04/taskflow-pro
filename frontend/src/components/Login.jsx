@@ -2,36 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LayoutDashboard, LockKeyhole, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react'; // Asegúrate de tener framer-motion instalado
-import { PublicClientApplication } from '@azure/msal-browser';
-
-// --- Microsoft Entra ID (SSO) ---
-const AZURE_CLIENT_ID = import.meta.env.VITE_AZURE_CLIENT_ID;
-const AZURE_TENANT_ID = import.meta.env.VITE_AZURE_TENANT_ID;
-const ssoEnabled = Boolean(AZURE_CLIENT_ID && AZURE_TENANT_ID);
-
-let msalInstance = null;
-const getMsalInstance = async () => {
-  if (!msalInstance) {
-    msalInstance = new PublicClientApplication({
-      auth: {
-        clientId: AZURE_CLIENT_ID,
-        authority: `https://login.microsoftonline.com/${AZURE_TENANT_ID}`,
-        redirectUri: window.location.origin,
-        navigateToLoginRequestUrl: false
-      },
-      cache: { 
-        cacheLocation: 'sessionStorage',
-        storeAuthStateInCookie: false 
-      },
-      system: {
-        navigationTimeout: 60000,
-        iframeHashTimeout: 10000
-      }
-    });
-    await msalInstance.initialize();
-  }
-  return msalInstance;
-};
+import { msalInstance, ssoEnabled, MS_PENDING_IDTOKEN } from '../msal';
 
 const MicrosoftLogo = () => (
   <svg width="18" height="18" viewBox="0 0 21 21">
@@ -53,16 +24,42 @@ const Login = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Al cargar la app: procesa respuestas pendientes y limpia cualquier bandera de
-  // "interacción en progreso" que haya quedado pegada de un intento anterior.
-  // IMPORTANTE: solo en la ventana principal. Dentro del popup de MSAL (mismo origen,
-  // window.opener presente) NO debemos tocar MSAL o rompe el flujo.
+  // Intercambia el idToken de Microsoft por la sesión propia de la app.
+  const exchangeMicrosoftToken = async (idToken) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/auth/microsoft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.token) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        window.location.href = '/dashboard';
+      } else {
+        alert(data.error || 'No fue posible iniciar sesión con Microsoft.');
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error('Error intercambiando token de Microsoft:', error);
+      alert('Error de conexión con el servidor.');
+      setIsLoading(false);
+    }
+  };
+
+  // Al cargar la pantalla de Login: si venimos de un redirect de Microsoft, main.jsx
+  // ya procesó el hash y dejó el idToken en sessionStorage. Lo recogemos aquí y lo
+  // intercambiamos por la sesión de la app.
   useEffect(() => {
     if (!ssoEnabled) return;
-    if (window.opener && window.opener !== window) return; // estamos dentro del popup → salir
-    getMsalInstance()
-      .then((msal) => msal.handleRedirectPromise())
-      .catch((err) => console.warn("MSAL init:", err?.errorCode || err?.message));
+    const pending = sessionStorage.getItem(MS_PENDING_IDTOKEN);
+    if (pending) {
+      sessionStorage.removeItem(MS_PENDING_IDTOKEN);
+      exchangeMicrosoftToken(pending);
+    }
   }, []);
 
   const handleLogin = async (e) => {
@@ -100,61 +97,20 @@ const Login = () => {
     }
   };
 
-  // DEBUG TEMPORAL: manda logs al backend para diagnóstico (además de la consola)
-  const clog = (msg, data) => {
-    console.log(msg, data || '');
-    try {
-      fetch('/api/clientlog', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ msg, data })
-      });
-    } catch (_) {}
-  };
-
   const handleMicrosoftLogin = async () => {
     setIsLoading(true);
-    clog("1. Iniciando flujo de Microsoft SSO");
     try {
-      const msal = await getMsalInstance();
-      clog("2. MSAL inicializado, abriendo popup", { redirectUri: window.location.origin });
-
-      const result = await msal.loginPopup({
+      // Redirige la ventana completa a Microsoft. Al volver, main.jsx procesa la
+      // respuesta y el useEffect de arriba intercambia el token. No hay código que
+      // corra después de esta llamada (la página navega fuera).
+      await msalInstance.loginRedirect({
         scopes: ['openid', 'profile', 'email'],
         prompt: 'select_account'
       });
-
-      clog("3. Respuesta de Microsoft recibida", { account: result?.account?.username, hasIdToken: !!result?.idToken });
-
-      const res = await fetch('/api/auth/microsoft', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken: result.idToken })
-      });
-
-      const data = await res.json();
-      clog("4. Respuesta del backend", { status: res.status, ok: res.ok, error: data?.error, hasToken: !!data?.token });
-
-      if (res.ok && data.token) {
-        clog("5. Login exitoso, redirigiendo a /dashboard");
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 100);
-      } else {
-        alert(data.error || "No fue posible iniciar sesión con Microsoft.");
-        setIsLoading(false);
-      }
     } catch (error) {
-      clog("ERROR en login Microsoft", { errorCode: error?.errorCode, errorMessage: error?.errorMessage, message: error?.message });
-      if (error?.errorCode === 'interaction_in_progress') {
-        try { const msal = await getMsalInstance(); await msal.handleRedirectPromise(); } catch (_) {}
-        alert("Había un inicio de sesión anterior sin terminar. Ya se limpió, por favor intenta de nuevo.");
-      } else if (error?.errorCode !== 'user_cancelled') {
-        const detalle = [error?.errorCode, error?.errorMessage || error?.message].filter(Boolean).join(' — ');
-        alert(`No fue posible iniciar sesión con Microsoft.${detalle ? `\n\nDetalle técnico: ${detalle}` : ''}`);
-      }
+      console.error('Error al iniciar redirect de Microsoft:', error?.errorCode || error?.message);
+      const detalle = [error?.errorCode, error?.errorMessage || error?.message].filter(Boolean).join(' — ');
+      alert(`No fue posible iniciar sesión con Microsoft.${detalle ? `\n\nDetalle técnico: ${detalle}` : ''}`);
       setIsLoading(false);
     }
   };

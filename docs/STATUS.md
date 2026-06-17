@@ -1,12 +1,13 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-16 (tarde)_
+_Última actualización: 2026-06-17_
 
 ---
 
 ## Estado General
-El proyecto está activo y en desarrollo continuo. Backend y frontend operativos. BD PostgreSQL sincronizada.
-SSO con Microsoft Entra ID: bugs de frontend resueltos; **en pausa esperando config de Azure (plataforma SPA)** — ver sección 16.
+El proyecto está activo y en desarrollo continuo. Frontend operativo.
+**SSO con Microsoft Entra ID: ✅ FUNCIONANDO end-to-end** (flujo `loginRedirect`; validado Microsoft → token → BD → dashboard). Debug temporal removido y **commiteado**. Ver sección 17.
+**BD: ✅ RESUELTO** — era el `DATABASE_URL` con la contraseña sin URL-encodear. Ver sección 18.
 
 ---
 
@@ -206,10 +207,12 @@ Call sites actualizados para construir descripción de filtros activos en la fil
 - Variables: `VITE_AZURE_CLIENT_ID`, `VITE_AZURE_TENANT_ID` (se incrustan en el build; NO son runtime).
 - Alert con detalle técnico del error + logs de consola para depuración.
 
-**Estado actual (EN PAUSA — esperando Azure):**
+**Estado actual: ✅ RESUELTO a nivel de código en sesión 2026-06-17 — ver sección 17.** (El historial de depuración 2026-06-16 abajo queda como referencia.)
+
+**Sesión de depuración 2026-06-16 (esperando Azure):**
 - Código completo; rutas de error probadas (503 sin config, 401 token inválido).
 - IDs reales cargados en `.env`; el botón aparece (frontend OK).
-- **Sesión de depuración 2026-06-16** — se resolvieron 3 bugs de frontend en cadena:
+- Se resolvieron 3 bugs de frontend en cadena:
   1. `handleRedirectPromise` ejecutándose dentro del popup → `no_token_request_cache_error`. Fix: efecto de montaje protegido para correr solo en la ventana principal (`if (window.opener && window.opener !== window) return`).
   2. Bandera `interaction_in_progress` colgada de intentos previos. Fix: el efecto de montaje la limpia + recuperación en el `catch`.
   3. El popup recargaba la app completa y `<Route path="*" → Navigate to /login>` se llevaba el hash con el token antes de que MSAL lo leyera. Fix en `main.jsx`: si la ventana es el popup de MSAL (`window.opener` + hash con `code/state/error`), **no se monta la app** (`isMsalPopup`), dejando el hash quieto para que MSAL lo lea.
@@ -229,6 +232,33 @@ Call sites actualizados para construir descripción de filtros activos en la fil
 
 ---
 
+## Completado en sesión 2026-06-17
+
+### 17. SSO Microsoft — migración de `loginPopup` a `loginRedirect` (RESUELTO)
+
+**Diagnóstico:** con Azure ya configurado (localhost:5173 registrado como SPA), el popup seguía fallando con `timed_out`. Instrumentando `main.jsx` se capturó la causa raíz: al volver de Microsoft, **`window.opener` llega `null`** (`hasOpener:false`) porque Microsoft Entra envía cabeceras **Cross-Origin-Opener-Policy**. Eso rompía tanto el guard `isMsalPopup` como el polling de MSAL desde la ventana principal → popup estructuralmente inviable.
+
+**Solución (flujo redirect, a prueba de COOP):**
+- **`frontend/src/msal.js` (NUEVO):** instancia única `PublicClientApplication` compartida + `ssoEnabled` + constante `MS_PENDING_IDTOKEN`. `redirectUri = window.location.origin`.
+- **`frontend/src/main.jsx`:** antes de montar React, ejecuta `initialize()` → `handleRedirectPromise()`; si vuelve un `idToken`, lo deja en `sessionStorage`. Así MSAL consume y limpia el hash ANTES de que el Router toque la URL (evita el bug #3 sin tocar `App.jsx`). Se eliminó el hack `isMsalPopup`.
+- **`frontend/src/components/Login.jsx`:** `handleMicrosoftLogin` ahora llama `msalInstance.loginRedirect(...)`. Un `useEffect` al montar lee el `idToken` pendiente de `sessionStorage` y lo intercambia con `POST /api/auth/microsoft` (`exchangeMicrosoftToken`). Se quitó todo lo de `loginPopup`/`getMsalInstance`.
+
+**Verificación e2e (log del backend):** flujo completo OK — redirect procesado con `idToken` → backend **"Token verificado OK"** → correo extraído → JWT emitido → **dashboard**. **UX nueva:** ya no hay popup; la página completa navega a Microsoft y regresa.
+
+**Debug temporal REMOVIDO:** se eliminaron `ssoDebug`/`clientLog`/imports `fs`/`path` y el bloque `peek` (`authController.js`), la ruta `POST /api/clientlog` (`routes/api.js`) y el helper `clog` (`main.jsx`, `Login.jsx`; los `catch` ahora usan `console.error`). Borrados `sso-debug*.log`, `.env.bak`, `.env.bak.preenc`. Los fixes reales (redirect, `msal.js`, `main.jsx`) se conservan. **Commiteado.**
+
+### 18. ✅ RESUELTO: PostgreSQL rechazaba la conexión — `DATABASE_URL` mal codificado
+
+Al validar el SSO el backend NO conectaba a la BD (Prisma: `User was denied access on the database`); el cron fallaba igual cada minuto.
+
+**Causa raíz:** el `DATABASE_URL` de `backend/.env` tenía la contraseña **en crudo** con caracteres especiales (`& @ ) \ { + <`). El `@` interno de la contraseña hacía que el parser de URL cortara ahí y tomara mitad de la contraseña como host → nunca autenticaba bien. Por eso la misma contraseña conectaba pegada directo en PostgreSQL pero fallaba vía la URL.
+
+**Fix:** se URL-encodeó **solo la contraseña** (verificado roundtrip exacto con `decodeURIComponent`). Conexión confirmada con Prisma: `current_user = app_taskflow_user`, `current_database = taskflow_db`. Cron arranca sin errores.
+
+**Nota producción:** en el servidor el `DATABASE_URL` va por **variable de entorno**; si la contraseña trae caracteres especiales, debe ir igualmente URL-encodeada.
+
+---
+
 ## Deuda técnica conocida
 - Drift de migraciones Prisma: se ha usado `prisma db push` sin generar migraciones formales. Resolver con `prisma migrate resolve` o generando una migración base.
 - Backend corre con `node index.js` (sin nodemon en producción). Para dev usar `npm run dev`.
@@ -237,6 +267,9 @@ Call sites actualizados para construir descripción de filtros activos en la fil
 
 ## Próximos pasos sugeridos
 
+- ⚠️ **PRIORIDAD — Seguridad:** rotar `JWT_SECRET` (sigue siendo el de ejemplo `taskflow_secret_key_123`, tanto en `backend/.env` como en los defaults de `authController.js`, y está en el historial de git). Al rotarlo se invalidan las sesiones activas (esperado).
+- ⚠️ **Seguridad (de sesión 2026-06-16):** rotar la contraseña de PostgreSQL expuesta en el historial de git (cuando se rote, re-encodear el `DATABASE_URL`).
+- **node_modules trackeado:** `backend/node_modules` está versionado y genera ruido en cada `git status`. Conviene `git rm -r --cached backend/node_modules` y añadirlo al `.gitignore`.
 - **Diagrama Gantt** (evaluado): implementar con `gantt-task-react` (MIT, ~100KB) como vista separada en sidebar. Estimado medio día. Blocker: muchas tareas sin `fecha_inicio`; dependencias (`prerequisito`) son texto libre sin FK real.
 - Edición inline de título de subtarea en la vista de lista de tareas (actualmente solo en modal de detalles).
 - Verificar comportamiento de permisos con usuarios reales no-admin en producción.

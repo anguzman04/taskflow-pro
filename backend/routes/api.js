@@ -19,7 +19,6 @@ const noteController = require('../controllers/noteController');
 // ==========================================
 router.post('/login', authController.login);
 router.post('/auth/microsoft', authController.microsoftLogin);
-router.post('/clientlog', authController.clientLog);
 router.post('/change-password', authController.changePassword);
 
 // ==========================================
