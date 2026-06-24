@@ -49,7 +49,7 @@ const authController = {
 
       const token = jwt.sign(
         { id: user.id },
-        process.env.JWT_SECRET || 'taskflow_secret_key_123',
+        process.env.JWT_SECRET,
         { expiresIn: '8h' }
       );
 
@@ -57,7 +57,7 @@ const authController = {
         ...user,
         area_nombre: user.area ? user.area.nombre : null,
       };
-      delete formattedUser.password; 
+      delete formattedUser.password;
 
       res.json({ token, user: formattedUser });
 
@@ -103,7 +103,7 @@ const authController = {
       // su identidad ya fue verificada por Entra ID (incluye MFA si la empresa lo exige).
       const token = jwt.sign(
         { id: user.id },
-        process.env.JWT_SECRET || 'taskflow_secret_key_123',
+        process.env.JWT_SECRET,
         { expiresIn: '8h' }
       );
 

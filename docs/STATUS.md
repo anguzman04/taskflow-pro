@@ -340,6 +340,24 @@ Se publicó la aplicación en producción (`https://taskprojit.atlanticqi.com`, 
 
 ---
 
+## Completado en sesión 2026-06-24
+
+### 22. Rotación de `JWT_SECRET` + endurecimiento
+
+Se rotó el `JWT_SECRET` (antes el de ejemplo `taskflow_secret_key_123`, expuesto en el historial de git) y se eliminó el fallback hardcodeado que era el verdadero riesgo.
+
+- **Secreto nuevo:** 64 caracteres aleatorios (`crypto.randomBytes(48).base64url`), cargado en `backend/.env` (gitignoreado, no se commitea).
+- **Fallback eliminado:** los 3 puntos activos (`authController.login`, `authController.microsoftLogin`, `verifyToken` en `routes/api.js`) usaban `process.env.JWT_SECRET || 'taskflow_secret_key_123'`. Ahora usan `process.env.JWT_SECRET` a secas: si la env var no carga, ya no se cae silenciosamente al secreto público.
+- **Guard de arranque (`index.js`):** si `JWT_SECRET` no está definido, el backend imprime `FATAL` y hace `process.exit(1)` en vez de operar inseguro.
+- **Verificación:** syntax check OK en los 3 archivos; guard dispara exit 1 sin la var; roundtrip firma/verifica OK con el secreto nuevo.
+- Archivos copia/backup (`authController - copia.js`, `api - copia.js`, `authControllerbk.js`) son código muerto (no se importan) y usan otro default; no se tocaron.
+
+**Efecto esperado:** rotar el secreto **invalida todas las sesiones activas** → los usuarios deben volver a iniciar sesión.
+
+⚠️ **PENDIENTE en producción:** el servidor lee `JWT_SECRET` como **variable de entorno del SO**. Hay que actualizar esa variable con el secreto nuevo y **reiniciar el proceso de Node** (ver regla operativa sesión 2026-06-23: cambiar una env del backend exige reiniciar Node). Mientras no se actualice, producción sigue con el secreto viejo.
+
+---
+
 ## Deuda técnica conocida
 - Drift de migraciones Prisma: se ha usado `prisma db push` sin generar migraciones formales. Resolver con `prisma migrate resolve` o generando una migración base.
 - Backend corre con `node index.js` (sin nodemon en producción). Para dev usar `npm run dev`.
@@ -348,7 +366,7 @@ Se publicó la aplicación en producción (`https://taskprojit.atlanticqi.com`, 
 
 ## Próximos pasos sugeridos
 
-- ⚠️ **PRIORIDAD — Seguridad:** rotar `JWT_SECRET` (sigue siendo el de ejemplo `taskflow_secret_key_123`, tanto en `backend/.env` como en los defaults de `authController.js`, y está en el historial de git). Al rotarlo se invalidan las sesiones activas (esperado).
+- ✅ **HECHO (sesión 2026-06-24):** `JWT_SECRET` rotado y fallback hardcodeado eliminado (ver sección 22). ⚠️ Falta aplicar el secreto nuevo en la variable de entorno del SO en **producción** y reiniciar Node.
 - ⚠️ **Seguridad (de sesión 2026-06-16):** rotar la contraseña de PostgreSQL expuesta en el historial de git (cuando se rote, re-encodear el `DATABASE_URL`).
 - **node_modules trackeado:** `backend/node_modules` está versionado y genera ruido en cada `git status`. Conviene `git rm -r --cached backend/node_modules` y añadirlo al `.gitignore`.
 - **Diagrama Gantt** (evaluado): implementar con `gantt-task-react` (MIT, ~100KB) como vista separada en sidebar. Estimado medio día. Blocker: muchas tareas sin `fecha_inicio`; dependencias (`prerequisito`) son texto libre sin FK real.

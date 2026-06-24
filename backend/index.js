@@ -3,6 +3,13 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
+// El JWT_SECRET es obligatorio: sin él, firmar/verificar tokens sería inseguro.
+// Fallar al arrancar es preferible a operar con un secreto ausente o por defecto.
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: la variable de entorno JWT_SECRET no está definida. Abortando arranque.');
+  process.exit(1);
+}
+
 const apiRoutes = require('./routes/api'); // Importamos tu archivo api.js
 
 const app = express();

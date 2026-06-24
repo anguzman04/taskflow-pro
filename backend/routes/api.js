@@ -32,7 +32,7 @@ const verifyToken = (req, res, next) => {
     }
 
     try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'taskflow_secret_key_123');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.userId = decoded.id || decoded.userId; 
         next();
     } catch (error) {
