@@ -19,6 +19,11 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Microsoft es la opción principal; el login local queda oculto tras un enlace discreto.
+  // Si el SSO no está habilitado, mostramos el formulario local directamente.
+  const [showLocalLogin, setShowLocalLogin] = useState(false);
+  const localLoginVisible = !ssoEnabled || showLocalLogin;
+
   // Estados para el flujo de Cambio de Contraseña
   const [requiresPasswordChange, setRequiresPasswordChange] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -180,63 +185,94 @@ const Login = () => {
                 </div>
               </div>
               <h2 className="text-2xl font-bold text-slate-900 text-center mb-2">TaskFlow Pro</h2>
-              <p className="text-slate-500 text-center mb-8">Ingresa tus credenciales para continuar</p>
-              
-              <form onSubmit={handleLogin} className="space-y-6">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase">Email</label>
-                  <input 
-                    type="email" 
-                    required 
-                    placeholder="admin@taskflow.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all" 
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase">Contraseña</label>
-                  <input 
-                    type="password" 
-                    required 
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all" 
-                  />
-                </div>
-                <button 
-                  type="submit"
+              <p className="text-slate-500 text-center mb-8">Inicia sesión para continuar</p>
+
+              {/* --- OPCIÓN PRINCIPAL: Microsoft --- */}
+              {ssoEnabled && (
+                <button
+                  type="button"
+                  onClick={handleMicrosoftLogin}
                   disabled={isLoading}
-                  className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-slate-200 disabled:opacity-50"
+                  className="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-slate-800 transition-all active:scale-[0.98] shadow-lg shadow-slate-300 disabled:opacity-50 flex items-center justify-center gap-3"
                 >
-                  {isLoading ? 'Verificando...' : 'Iniciar Sesión'}
-                </button>
-
-                {ssoEnabled && (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 h-px bg-slate-200" />
-                      <span className="text-[10px] font-bold text-slate-400 uppercase">o continúa con</span>
-                      <div className="flex-1 h-px bg-slate-200" />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleMicrosoftLogin}
-                      disabled={isLoading}
-                      className="w-full bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all active:scale-[0.98] shadow-sm disabled:opacity-50 flex items-center justify-center gap-3"
-                    >
-                      <MicrosoftLogo /> Iniciar sesión con Microsoft
-                    </button>
-                  </>
-                )}
-
-                <div className="text-center pt-2">
-                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                    ATLANTICQI - BARRANQUILLA
+                  <span className="bg-white rounded-[3px] p-0.5 flex items-center justify-center">
+                    <MicrosoftLogo />
                   </span>
+                  {isLoading ? 'Conectando...' : 'Iniciar sesión con Microsoft'}
+                </button>
+              )}
+
+              {/* --- ENLACE DISCRETO HACIA EL LOGIN LOCAL --- */}
+              {ssoEnabled && !showLocalLogin && (
+                <div className="text-center mt-5">
+                  <button
+                    type="button"
+                    onClick={() => setShowLocalLogin(true)}
+                    className="text-xs text-slate-400 hover:text-slate-600 font-semibold transition-colors underline-offset-2 hover:underline"
+                  >
+                    Acceder con correo y contraseña
+                  </button>
                 </div>
-              </form>
+              )}
+
+              {/* --- LOGIN LOCAL (secundario, colapsable) --- */}
+              <AnimatePresence initial={false}>
+                {localLoginVisible && (
+                  <motion.div
+                    key="local-login"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="overflow-hidden"
+                  >
+                    {ssoEnabled && (
+                      <div className="flex items-center gap-3 mt-6 mb-1">
+                        <div className="flex-1 h-px bg-slate-200" />
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">o con tu cuenta local</span>
+                        <div className="flex-1 h-px bg-slate-200" />
+                      </div>
+                    )}
+                    <form onSubmit={handleLogin} className="space-y-5 pt-5">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Email</label>
+                        <input
+                          type="email"
+                          required={localLoginVisible}
+                          placeholder="admin@taskflow.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Contraseña</label>
+                        <input
+                          type="password"
+                          required={localLoginVisible}
+                          placeholder="••••••••"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 transition-all"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="w-full bg-white border border-slate-300 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-50 transition-all active:scale-[0.98] shadow-sm disabled:opacity-50"
+                      >
+                        {isLoading ? 'Verificando...' : 'Iniciar Sesión'}
+                      </button>
+                    </form>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="text-center pt-8">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                  ATLANTICQI - BARRANQUILLA
+                </span>
+              </div>
             </motion.div>
           ) : (
             

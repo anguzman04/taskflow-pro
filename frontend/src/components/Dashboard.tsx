@@ -15,6 +15,16 @@ import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
+import MultiSelect from './MultiSelect';
+
+// Opciones de prioridad reutilizadas por los filtros multi-selección.
+const PRIORITY_OPTIONS = [
+  { value: '0|Muy Alta', label: 'Muy Alta' },
+  { value: '1|Alta', label: 'Alta' },
+  { value: '2|Media', label: 'Media' },
+  { value: '3|Baja', label: 'Baja' },
+  { value: '4|Muy Baja', label: 'Muy Baja' },
+];
 
 export interface Project {
   id?: number;
@@ -277,12 +287,12 @@ export default function App() {
   const [controlAreaId, setControlAreaId] = useState<number | null>(null);
   //const [controlTasks, setControlTasks] = useState<any[]>([]);
   
-  const [controlResponsableFilter, setControlResponsableFilter] = useState<string>('All');
+  const [controlResponsableFilter, setControlResponsableFilter] = useState<string[]>([]);
   const [controlTasks, setControlTasks] = useState<any[]>([]);
-  const [taskPriorityFilter, setTaskPriorityFilter] = useState('');
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState<string[]>([]);
   const [taskDateFrom, setTaskDateFrom] = useState('');
   const [taskDateTo, setTaskDateTo] = useState('');
-  const [controlPriorityFilter, setControlPriorityFilter] = useState('');
+  const [controlPriorityFilter, setControlPriorityFilter] = useState<string[]>([]);
   const [controlDateFrom, setControlDateFrom] = useState('');
   const [controlDateTo, setControlDateTo] = useState('');
   
@@ -292,7 +302,7 @@ export default function App() {
   const [expandedTaskSubtasks, setExpandedTaskSubtasks] = useState<Set<number>>(new Set());
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
   const [projectStatusFilter, setProjectStatusFilter] = useState('');
-  const [projectLiderFilter, setProjectLiderFilter] = useState('');
+  const [projectLiderFilter, setProjectLiderFilter] = useState<string[]>([]);
   const [projectPrioritarioFilter, setProjectPrioritarioFilter] = useState(false);
 
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -342,8 +352,8 @@ export default function App() {
   const [userSearchTerm, setUserSearchTerm] = useState(''); 
   const [isImporting, setIsImporting] = useState(false);
 
-  const [reportAreaFilter, setReportAreaFilter] = useState<string>('All');
-  const [reportProjectFilter, setReportProjectFilter] = useState<string>('All');
+  const [reportAreaFilter, setReportAreaFilter] = useState<string[]>([]);
+  const [reportProjectFilter, setReportProjectFilter] = useState<string[]>([]);
   const [reportDateFrom, setReportDateFrom] = useState<string>('');
   const [reportDateTo, setReportDateTo] = useState<string>('');
 
@@ -432,7 +442,7 @@ export default function App() {
       matchesStatus = task.estado === statusFilter;
     }
     
-    const matchesPriority = !taskPriorityFilter || task.prioridad === taskPriorityFilter;
+    const matchesPriority = taskPriorityFilter.length === 0 || taskPriorityFilter.includes(task.prioridad);
     const taskFecha = task.fecha_registro ? task.fecha_registro.split('T')[0] : '';
     const matchesDate = (!taskDateFrom || taskFecha >= taskDateFrom) && (!taskDateTo || taskFecha <= taskDateTo);
 
@@ -538,15 +548,15 @@ const filteredControlTasks = controlTasks.filter(task => {
       matchesArea = belongsToArea;
     }
 
-    // 4. Filtro por Responsable
+    // 4. Filtro por Responsable (multi-selección: coincide si comparte alguno)
     let matchesResponsable = true;
-    if (controlResponsableFilter !== 'All') {
+    if (controlResponsableFilter.length > 0) {
       const responsablesArray = task.responsable ? String(task.responsable).split(',').map(r => r.trim()) : [];
-      matchesResponsable = responsablesArray.includes(controlResponsableFilter);
+      matchesResponsable = controlResponsableFilter.some(f => responsablesArray.includes(f));
     }
 
-    // 5. Filtro por Prioridad
-    const matchesControlPriority = !controlPriorityFilter || task.prioridad === controlPriorityFilter;
+    // 5. Filtro por Prioridad (multi-selección)
+    const matchesControlPriority = controlPriorityFilter.length === 0 || controlPriorityFilter.includes(task.prioridad);
 
     // 6. Filtro por Fecha de registro
     const ctrlFecha = task.fecha_registro ? task.fecha_registro.split('T')[0] : '';
@@ -574,9 +584,9 @@ const filteredControlTasks = controlTasks.filter(task => {
 
 const filteredReportTasks = tasks.filter(task => {
   let matchArea = true; let matchProject = true; let matchDate = true;
-  if (reportAreaFilter !== 'All') matchArea = task.area_origen_id?.toString() === reportAreaFilter;
-  if (reportProjectFilter !== 'All') matchProject = task.proyecto_id?.toString() === reportProjectFilter;
-  
+  if (reportAreaFilter.length > 0) matchArea = reportAreaFilter.includes(task.area_origen_id?.toString());
+  if (reportProjectFilter.length > 0) matchProject = reportProjectFilter.includes(task.proyecto_id?.toString());
+
   // 🚀 CORRECCIÓN: Limpiar la fecha de registro antes de comparar
   if (reportDateFrom || reportDateTo) {
     const fechaRegLimpia = task.fecha_registro ? task.fecha_registro.split('T')[0] : '';
@@ -1658,7 +1668,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
     const parts: string[] = [];
     if (searchTerm) parts.push(`Búsqueda: "${searchTerm}"`);
     if (statusFilter !== 'All') parts.push(`Estado: ${statusFilter}`);
-    if (taskPriorityFilter) parts.push(`Prioridad: ${getPriorityLabel(taskPriorityFilter)}`);
+    if (taskPriorityFilter.length > 0) parts.push(`Prioridad: ${taskPriorityFilter.map(getPriorityLabel).join(', ')}`);
     if (taskDateFrom) parts.push(`Desde: ${taskDateFrom}`);
     if (taskDateTo) parts.push(`Hasta: ${taskDateTo}`);
     exportToExcelData(tasksData, 'Reporte_General', parts.length ? parts.join(' | ') : undefined);
@@ -1666,8 +1676,8 @@ const handleDeleteEvidence = async (evidenceId: number) => {
 
   const handleExportFilteredReport = () => {
     const parts: string[] = [];
-    if (reportAreaFilter !== 'All') { const a = areas.find(x => String(x.id) === String(reportAreaFilter)); if (a) parts.push(`Área: ${a.nombre}`); }
-    if (reportProjectFilter !== 'All') { const p = projects.find(x => String(x.id) === String(reportProjectFilter)); if (p) parts.push(`Proyecto: ${p.nombre}`); }
+    if (reportAreaFilter.length > 0) { const names = reportAreaFilter.map(id => areas.find(x => String(x.id) === id)?.nombre).filter(Boolean); if (names.length) parts.push(`Área: ${names.join(', ')}`); }
+    if (reportProjectFilter.length > 0) { const names = reportProjectFilter.map(id => projects.find(x => String(x.id) === id)?.nombre).filter(Boolean); if (names.length) parts.push(`Proyecto: ${names.join(', ')}`); }
     if (reportDateFrom) parts.push(`Desde: ${reportDateFrom}`);
     if (reportDateTo) parts.push(`Hasta: ${reportDateTo}`);
     exportToExcelData(filteredReportTasks, 'Reporte_Filtrado', parts.length ? parts.join(' | ') : undefined);
@@ -1923,7 +1933,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       return { name: fullName, total: ut.length, completed: ut.filter(t => t.estado === 'Completado').length, overdue: ut.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length, progress: ut.length > 0 ? Math.round(ut.reduce((s, t) => s + (Number(t.porcentaje_avance) || 0), 0) / ut.length) : 0 };
     }).filter(u => u.total > 0).sort((a, b) => b.total - a.total).slice(0, 10);
 
-    const clearFilters = () => { setReportAreaFilter('All'); setReportProjectFilter('All'); setReportDateFrom(''); setReportDateTo(''); };
+    const clearFilters = () => { setReportAreaFilter([]); setReportProjectFilter([]); setReportDateFrom(''); setReportDateTo(''); };
 
     return (
       <div className="space-y-6">
@@ -1932,15 +1942,23 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[200px]">
             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Área</label>
-            <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500 font-medium" value={reportAreaFilter} onChange={(e) => setReportAreaFilter(e.target.value)}>
-              <option value="All">Todas las Áreas</option>{areas.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-            </select>
+            <MultiSelect
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium"
+              placeholder="Todas las Áreas"
+              selected={reportAreaFilter}
+              onChange={setReportAreaFilter}
+              options={areas.map(a => ({ value: String(a.id), label: a.nombre }))}
+            />
           </div>
           <div className="flex-1 min-w-[200px]">
             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Proyecto</label>
-            <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-blue-500 font-medium" value={reportProjectFilter} onChange={(e) => setReportProjectFilter(e.target.value)}>
-              <option value="All">Todos los Proyectos</option>{projects.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-            </select>
+            <MultiSelect
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium"
+              placeholder="Todos los Proyectos"
+              selected={reportProjectFilter}
+              onChange={setReportProjectFilter}
+              options={projects.map(p => ({ value: String(p.id), label: p.nombre }))}
+            />
           </div>
           <div className="w-[140px]">
             <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Desde</label>
@@ -2205,7 +2223,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
   const filteredProjects = projects.filter(p => {
     if (projectSearchTerm && !p.nombre.toLowerCase().includes(projectSearchTerm.toLowerCase())) return false;
     if (projectStatusFilter && p.estado !== projectStatusFilter) return false;
-    if (projectLiderFilter && String(p.lider_id) !== projectLiderFilter) return false;
+    if (projectLiderFilter.length > 0 && !projectLiderFilter.includes(String(p.lider_id))) return false;
     if (projectPrioritarioFilter && !p.prioritario) return false;
     return true;
   });
@@ -2873,22 +2891,21 @@ case 'responsable':
                       <option value="Completado">Completado</option>
                     </select>
                   )}
-                  <select className="bg-white border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-40" value={taskPriorityFilter} onChange={e => setTaskPriorityFilter(e.target.value)}>
-                    <option value="">Prioridad</option>
-                    <option value="0|Muy Alta">Muy Alta</option>
-                    <option value="1|Alta">Alta</option>
-                    <option value="2|Media">Media</option>
-                    <option value="3|Baja">Baja</option>
-                    <option value="4|Muy Baja">Muy Baja</option>
-                  </select>
+                  <MultiSelect
+                    className="bg-white border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm font-medium w-44"
+                    placeholder="Prioridad"
+                    selected={taskPriorityFilter}
+                    onChange={setTaskPriorityFilter}
+                    options={PRIORITY_OPTIONS}
+                  />
                   <div className="flex items-center gap-2">
                     <Calendar size={15} className="text-slate-400 shrink-0" />
                     <input type="date" className="bg-white border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-36" value={taskDateFrom} onChange={e => setTaskDateFrom(e.target.value)} title="Registro desde" />
                     <span className="text-slate-400 text-xs font-bold">—</span>
                     <input type="date" className="bg-white border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-36" value={taskDateTo} onChange={e => setTaskDateTo(e.target.value)} title="Registro hasta" />
                   </div>
-                  {(taskPriorityFilter || taskDateFrom || taskDateTo) && (
-                    <button onClick={() => { setTaskPriorityFilter(''); setTaskDateFrom(''); setTaskDateTo(''); }} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap">
+                  {(taskPriorityFilter.length > 0 || taskDateFrom || taskDateTo) && (
+                    <button onClick={() => { setTaskPriorityFilter([]); setTaskDateFrom(''); setTaskDateTo(''); }} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap">
                       <FilterX size={14} /> Limpiar
                     </button>
                   )}
@@ -3022,33 +3039,32 @@ case 'responsable':
                     <option value="Finalizado">Finalizado</option>
                     <option value="Cancelado">Cancelado</option>
                   </select>
-                  <select
-                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium text-slate-600 outline-none focus:ring-2 focus:ring-blue-500/20 w-full lg:w-52"
-                    value={projectLiderFilter}
-                    onChange={e => setProjectLiderFilter(e.target.value)}
-                  >
-                    <option value="">Todos los líderes</option>
-                    {Array.from(new Set(projects.map(p => p.lider_id).filter(Boolean))).map(liderId => {
+                  <MultiSelect
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium w-full lg:w-52"
+                    placeholder="Todos los líderes"
+                    selected={projectLiderFilter}
+                    onChange={setProjectLiderFilter}
+                    options={Array.from(new Set(projects.map(p => p.lider_id).filter(Boolean))).map(liderId => {
                       const u = allUsers.find(u => u.id === liderId);
-                      return u ? <option key={liderId} value={String(liderId)}>{u.nombre} {u.apellido}</option> : null;
-                    })}
-                  </select>
+                      return u ? { value: String(liderId), label: `${u.nombre} ${u.apellido}` } : null;
+                    }).filter(Boolean) as { value: string; label: string }[]}
+                  />
                   <button
                     onClick={() => setProjectPrioritarioFilter(v => !v)}
                     className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-all whitespace-nowrap ${projectPrioritarioFilter ? 'bg-orange-100 border-orange-300 text-orange-700' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'}`}
                   >
                     ⭐ Solo prioritarios
                   </button>
-                  {(projectSearchTerm || projectStatusFilter || projectLiderFilter || projectPrioritarioFilter) && (
+                  {(projectSearchTerm || projectStatusFilter || projectLiderFilter.length > 0 || projectPrioritarioFilter) && (
                     <button
-                      onClick={() => { setProjectSearchTerm(''); setProjectStatusFilter(''); setProjectLiderFilter(''); setProjectPrioritarioFilter(false); }}
+                      onClick={() => { setProjectSearchTerm(''); setProjectStatusFilter(''); setProjectLiderFilter([]); setProjectPrioritarioFilter(false); }}
                       className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap"
                     >
                       <FilterX size={15} /> Limpiar
                     </button>
                   )}
                 </div>
-                {(projectSearchTerm || projectStatusFilter || projectLiderFilter || projectPrioritarioFilter) && (
+                {(projectSearchTerm || projectStatusFilter || projectLiderFilter.length > 0 || projectPrioritarioFilter) && (
                   <p className="text-xs text-slate-400 mt-2 pt-2 border-t border-slate-100">
                     Mostrando <span className="font-bold text-slate-600">{filteredProjects.length}</span> de <span className="font-bold text-slate-600">{projects.length}</span> proyectos
                   </p>
@@ -3169,12 +3185,13 @@ case 'responsable':
                   </div>
                   
                   <div className="flex flex-col sm:flex-row gap-4">
-                    <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-full sm:w-56" value={controlResponsableFilter} onChange={(e) => setControlResponsableFilter(e.target.value)}>
-                      <option value="All">Todos los Responsables</option>
-                      {Array.from(new Set(controlTasks.flatMap(t => t.responsable ? String(t.responsable).split(',').map(r => r.trim()) : []))).filter(Boolean).sort().map(resp => (
-                         <option key={resp} value={resp}>{resp}</option>
-                      ))}
-                    </select>
+                    <MultiSelect
+                      className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm font-medium w-full sm:w-56"
+                      placeholder="Todos los Responsables"
+                      selected={controlResponsableFilter}
+                      onChange={setControlResponsableFilter}
+                      options={Array.from(new Set(controlTasks.flatMap(t => t.responsable ? String(t.responsable).split(',').map(r => r.trim()) : []))).filter(Boolean).sort().map(resp => ({ value: String(resp), label: String(resp) }))}
+                    />
 
                     <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-full sm:w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
                       <option value="All">Todos los Estados</option>
@@ -3188,22 +3205,21 @@ case 'responsable':
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-4 mt-4 pt-4 border-t border-slate-100">
-                  <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 flex-1" value={controlPriorityFilter} onChange={e => setControlPriorityFilter(e.target.value)}>
-                    <option value="">Todas las Prioridades</option>
-                    <option value="0|Muy Alta">Muy Alta</option>
-                    <option value="1|Alta">Alta</option>
-                    <option value="2|Media">Media</option>
-                    <option value="3|Baja">Baja</option>
-                    <option value="4|Muy Baja">Muy Baja</option>
-                  </select>
+                  <MultiSelect
+                    className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm font-medium flex-1"
+                    placeholder="Todas las Prioridades"
+                    selected={controlPriorityFilter}
+                    onChange={setControlPriorityFilter}
+                    options={PRIORITY_OPTIONS}
+                  />
                   <div className="flex items-center gap-2 flex-1">
                     <Calendar size={15} className="text-slate-400 shrink-0" />
                     <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateFrom} onChange={e => setControlDateFrom(e.target.value)} title="Registro desde" />
                     <span className="text-slate-400 text-xs font-bold">—</span>
                     <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateTo} onChange={e => setControlDateTo(e.target.value)} title="Registro hasta" />
                   </div>
-                  {(controlPriorityFilter || controlDateFrom || controlDateTo) && (
-                    <button onClick={() => { setControlPriorityFilter(''); setControlDateFrom(''); setControlDateTo(''); }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap">
+                  {(controlPriorityFilter.length > 0 || controlDateFrom || controlDateTo) && (
+                    <button onClick={() => { setControlPriorityFilter([]); setControlDateFrom(''); setControlDateTo(''); }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap">
                       <FilterX size={15} /> Limpiar
                     </button>
                   )}

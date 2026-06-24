@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-17_
+_Última actualización: 2026-06-23_
 
 ---
 
@@ -256,6 +256,87 @@ Al validar el SSO el backend NO conectaba a la BD (Prisma: `User was denied acce
 **Fix:** se URL-encodeó **solo la contraseña** (verificado roundtrip exacto con `decodeURIComponent`). Conexión confirmada con Prisma: `current_user = app_taskflow_user`, `current_database = taskflow_db`. Cron arranca sin errores.
 
 **Nota producción:** en el servidor el `DATABASE_URL` va por **variable de entorno**; si la contraseña trae caracteres especiales, debe ir igualmente URL-encodeada.
+
+---
+
+## Completado en sesión 2026-06-19
+
+### 19. Rediseño jerárquico de la pantalla de Login — Microsoft como opción principal
+
+Se invirtió la jerarquía visual del login (`frontend/src/components/Login.jsx`) para dar prioridad al SSO de Microsoft sobre el acceso local con contraseña.
+
+- **Microsoft = opción principal:** único botón visible al cargar, con estilo destacado (fondo `slate-900`, sombra, ancho completo) y el logo de Microsoft sobre un recuadro blanco para que resalte.
+- **Login local = opción secundaria discreta:** oculto por defecto detrás de un enlace pequeño en gris _"Acceder con correo y contraseña"_. Al hacer clic, el formulario (email + contraseña) se despliega con animación (`AnimatePresence` + `height: auto`), separado por el divisor _"o con tu cuenta local"_. Su botón "Iniciar Sesión" quedó con estilo secundario (blanco con borde) para no competir con el de Microsoft.
+- **Estado nuevo:** `showLocalLogin` + derivado `localLoginVisible = !ssoEnabled || showLocalLogin`.
+- **Fallback:** si el SSO no está habilitado (`ssoEnabled === false`), el formulario local se muestra directamente como antes. Los inputs solo son `required` cuando el form está visible (no bloquean el submit estando colapsados).
+- La Pantalla 2 (cambio de contraseña obligatorio) quedó intacta.
+
+**Verificación:** validado visualmente por el usuario.
+
+---
+
+## Completado en sesión 2026-06-22
+
+### 20. Filtros de selección múltiple en todas las vistas
+
+Se convirtieron los filtros categóricos de selección única (`<select>`) a **multi-selección** mediante un componente reutilizable nuevo.
+
+**Componente nuevo `frontend/src/components/MultiSelect.tsx`:**
+- Dropdown con checkboxes en un popover. El disparador muestra el ítem si hay uno solo, o _"N seleccionados"_ si hay varios.
+- Botón "X" para limpiar la selección + cierre al hacer click afuera (listener `mousedown`).
+- API: `options`, `selected: string[]`, `onChange`, `placeholder`, `className` (replica el estilo del `<select>` que reemplaza), `panelAlign`.
+- Convención: **array vacío = sin filtro** (muestra todo).
+
+**Filtros migrados a multi-selección (`Dashboard.tsx`):**
+
+| Vista | Filtros |
+|---|---|
+| Panel de Actividades | Prioridad |
+| Control de Gestión | Responsable, Prioridad |
+| Reportes | Área, Proyecto |
+| Gestión de Proyectos | Líder |
+
+- Estados cambiados de `string`/`'All'` a `string[]` (`[]` inicial).
+- Lógica de filtrado pasó de `=== valor` a `arr.length === 0 || arr.includes(...)` (OR: coincide con cualquiera de los seleccionados). En Responsable: la tarea coincide si comparte alguno de los responsables seleccionados.
+- Las descripciones de filtros en los **export a Excel** ahora listan los valores con coma (p. ej. _"Prioridad: Alta, Media"_).
+- Constante `PRIORITY_OPTIONS` a nivel de módulo, reutilizada en Panel y Control.
+
+**Decisión de alcance:** el filtro de **Estado** y sus **tarjetas KPI** se dejaron como selección única (se evaluó hacerlo multi, pero rompía la metáfora de las tarjetas clicables). Fechas, búsquedas de texto y el toggle "Solo prioritarios" quedan igual.
+
+**Verificación:** `vite build` exitoso (2840 módulos, sin errores) + validado visualmente por el usuario.
+
+---
+
+## Completado en sesión 2026-06-23
+
+### 21. Despliegue en producción — SSO Microsoft funcionando end-to-end
+
+Se publicó la aplicación en producción (`https://taskprojit.atlanticqi.com`, detrás de IIS en Windows) con un **App Registration productivo nuevo** en Azure. El login con Microsoft quedó **funcionando end-to-end** (Microsoft → token → backend → JWT → dashboard).
+
+**Manejo de configuración en producción:** las variables sensibles se gestionan como **variables de entorno del sistema operativo** del servidor (no en archivos `.env`). Variables para Entra ID:
+
+| Variable | Capa | Cuándo se lee |
+|---|---|---|
+| `AZURE_TENANT_ID` | Backend | runtime (`process.env`) |
+| `AZURE_CLIENT_ID` | Backend | runtime (`process.env`) |
+| `VITE_AZURE_TENANT_ID` | Frontend | **build-time** (horneada por Vite en el bundle) |
+| `VITE_AZURE_CLIENT_ID` | Frontend | **build-time** |
+
+- Solo son **2 valores distintos** (Tenant ID y Client ID del mismo App Registration), repetidos en backend y frontend.
+- **No se requiere `AZURE_CLIENT_SECRET`**: el flujo valida el `idToken` con las llaves públicas de Azure (JWKS vía `jwks-rsa`), no con secreto.
+
+**Problemas resueltos durante el despliegue:**
+1. **El build seguía usando el `client_id` de desarrollo.** Causa: `frontend/.env` contenía el `VITE_AZURE_CLIENT_ID` de dev y quedaba horneado en el bundle. Recordatorio: cambiar una `VITE_*` exige **recompilar (`npm run build`) y republicar `dist/`** — reiniciar no basta porque el valor va incrustado en el bundle.
+2. **`POST /api/auth/microsoft` devolvía 401** aunque el frontend ya usaba el client_id productivo. Causa raíz: **el proceso de Node no se había reiniciado** tras crear las variables del SO, así que `process.env.AZURE_CLIENT_ID`/`AZURE_TENANT_ID` seguían con los valores viejos → el `audience`/`issuer` del token (emitido por el app productivo) no coincidía con lo que validaba el backend → `jwt.verify` lanzaba excepción → 401 (catch en `authController.microsoftLogin`). **Solución: reiniciar Node** para que tomara las variables productivas.
+
+**Regla operativa para producción:**
+- Cambiar una variable del SO del **backend** (`AZURE_*`, `JWT_SECRET`, `DATABASE_URL`, etc.) → **reiniciar el proceso de Node** (se leen al arrancar).
+- Cambiar una `VITE_*` del **frontend** → **recompilar y republicar** (no basta reiniciar).
+
+**Pendiente de infraestructura en producción (de la lista de checklist, ver notas de despliegue):**
+- CORS en `backend/index.js` está fijo a `http://localhost:5173`; revisar para el dominio productivo o confirmar que IIS sirve front+back en el mismo origen.
+- El front llama a `/api` por ruta relativa → IIS debe hacer reverse-proxy de `/api` al backend Node y servir el `dist/`.
+- Gestor de proceso para Node (iisnode/pm2/nssm) para reinicio automático tras caída o reboot.
 
 ---
 
