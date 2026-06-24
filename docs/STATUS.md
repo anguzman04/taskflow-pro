@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-23_
+_Última actualización: 2026-06-24_
 
 ---
 
@@ -8,6 +8,7 @@ _Última actualización: 2026-06-23_
 El proyecto está activo y en desarrollo continuo. Frontend operativo.
 **SSO con Microsoft Entra ID: ✅ FUNCIONANDO end-to-end** (flujo `loginRedirect`; validado Microsoft → token → BD → dashboard). Debug temporal removido y **commiteado**. Ver sección 17.
 **BD: ✅ RESUELTO** — era el `DATABASE_URL` con la contraseña sin URL-encodear. Ver sección 18.
+**`JWT_SECRET`: ✅ ROTADO** (sesión 2026-06-24) — secreto nuevo + fallback hardcodeado eliminado + guard de arranque. Ver sección 22. ⚠️ Falta aplicar el secreto nuevo en la env var del SO de producción y reiniciar Node.
 
 ---
 
