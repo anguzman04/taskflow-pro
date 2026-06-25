@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-24_
+_Última actualización: 2026-06-25_
 
 ---
 
@@ -359,6 +359,27 @@ Se rotó el `JWT_SECRET` (antes el de ejemplo `taskflow_secret_key_123`, expuest
 
 ---
 
+## En progreso — sesión 2026-06-25
+
+### 23. Diagrama Gantt — re-evaluación de viabilidad (decisiones de diseño pendientes)
+
+Se retomó el tema del Gantt y se hizo un **análisis de los datos reales en BD (199 tareas)**. Conclusión: **ya es viable**; el blocker original quedó obsoleto.
+
+**Hallazgos sobre los datos:**
+- Las 199 tareas tienen `fecha_inicio` Y `fecha_fin` (ambos `DateTime` **obligatorios** en `Task`). La nota vieja ("muchas tareas sin `fecha_inicio`") ya no aplica → hay rango de fechas para dibujar cada barra.
+- A sanear al implementar: 29 tareas con `inicio == fin` (barra de 1 día), 10 con `fecha_fin < fecha_inicio` (rango inválido → clamp/swap), y estados inconsistentes en BD (`"En Espera"` vs `"En espera"`, `"Planeada"` vs `"Planeado"`) → normalizar para colorear barras.
+- `prerequisito` (54 con texto) **no** son referencias a otras tareas — son strings tipo `"No Aplica"`, `"SAPP"`, `"HPE - Campañas"` (cliente/área/proyecto). Confirmado: **no se pueden dibujar flechas de dependencia**; va un Gantt sin dependencias.
+
+**Encaje técnico:** vista nueva `'gantt'` en `Dashboard.tsx` (type `View`), botón en sidebar (junto a Reportes) y render en el área principal (patrón de `renderReportsView`). Ya existe `filteredTasks`. Stack disponible: recharts + lucide + Tailwind; **no** hay librería de fechas ni de Gantt instalada.
+
+**Decisiones de diseño pendientes (a definir con el usuario antes de codear):**
+1. **Enfoque:** componente propio (recomendado: sin dependencias, control total) vs librería `gantt-task-react` (~100KB, poco mantenida, CSS propio, flechas de dependencia que no usaríamos).
+2. **Agrupación:** por Proyecto (recomendado) / por Área / lista plana.
+3. **Alcance inicial:** solo activas + filtros (recomendado, oculta 83 Completadas/Canceladas) / las 199.
+4. Por precisar: propósito (ejecutivo / planificación / carga por persona), quién la usa (gatea el permiso del sidebar), escala de tiempo (semana/mes/trimestre), y si solo-lectura o editar fechas arrastrando (esto último tocaría backend).
+
+---
+
 ## Deuda técnica conocida
 - Drift de migraciones Prisma: se ha usado `prisma db push` sin generar migraciones formales. Resolver con `prisma migrate resolve` o generando una migración base.
 - Backend corre con `node index.js` (sin nodemon en producción). Para dev usar `npm run dev`.
@@ -370,7 +391,7 @@ Se rotó el `JWT_SECRET` (antes el de ejemplo `taskflow_secret_key_123`, expuest
 - ✅ **HECHO (sesión 2026-06-24):** `JWT_SECRET` rotado y fallback hardcodeado eliminado (ver sección 22). ⚠️ Falta aplicar el secreto nuevo en la variable de entorno del SO en **producción** y reiniciar Node.
 - ⚠️ **Seguridad (de sesión 2026-06-16):** rotar la contraseña de PostgreSQL expuesta en el historial de git (cuando se rote, re-encodear el `DATABASE_URL`).
 - **node_modules trackeado:** `backend/node_modules` está versionado y genera ruido en cada `git status`. Conviene `git rm -r --cached backend/node_modules` y añadirlo al `.gitignore`.
-- **Diagrama Gantt** (evaluado): implementar con `gantt-task-react` (MIT, ~100KB) como vista separada en sidebar. Estimado medio día. Blocker: muchas tareas sin `fecha_inicio`; dependencias (`prerequisito`) son texto libre sin FK real.
+- **Diagrama Gantt** (re-evaluado sesión 2026-06-25 — ✅ viable, decisiones de diseño pendientes): ver sección 23.
 - Edición inline de título de subtarea en la vista de lista de tareas (actualmente solo en modal de detalles).
 - Verificar comportamiento de permisos con usuarios reales no-admin en producción.
 - Resolver drift de migraciones Prisma.
