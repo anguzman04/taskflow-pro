@@ -56,6 +56,9 @@ model User {
   // --- NUEVO CAMPO ---
   perm_reports_view     Boolean        @default(false)
 
+  // Permiso de la vista Cronograma / Gantt (supervisión dirección + PM)
+  perm_gantt_view       Boolean        @default(false)
+
   // Permisos de Proyectos
   perm_projects_view    Boolean        @default(false)
   perm_projects_create  Boolean        @default(false)
