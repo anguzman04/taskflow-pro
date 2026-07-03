@@ -1,6 +1,33 @@
 const { PrismaClient } = require('@prisma/client');
-const notificationService = require('./notificationService'); 
+const notificationService = require('./notificationService');
 const prisma = new PrismaClient();
+
+// Estados que representan una tarea "cerrada" (terminada o cancelada).
+// Al ENTRAR a uno de ellos (por cualquier vía) se estampa fecha_ejecucion
+// (fecha real de cierre) y se deja rastro en AuditLog. Tolerante a variantes
+// de mayúsculas/género ("Completado/a", "Finalizado", "Cancelado/a").
+const esEstadoCerrado = (estado) => {
+  const s = String(estado || '').trim().toLowerCase();
+  return s.startsWith('complet') || s.startsWith('finaliz') || s.startsWith('cancel');
+};
+
+// Registra en AuditLog el cierre de una tarea. No lanza: si falla, solo loguea.
+const registrarCierreAudit = async (taskId, userId, oldEstado, newEstado, fechaCierre) => {
+  try {
+    await prisma.auditLog.create({
+      data: {
+        task_id: taskId,
+        user_id: userId,
+        action: esEstadoCerrado(newEstado) && String(newEstado).toLowerCase().startsWith('cancel')
+          ? 'TAREA CANCELADA'
+          : 'TAREA COMPLETADA',
+        details: `Estado: "${oldEstado || '—'}" → "${newEstado}". Fecha de cierre registrada: ${fechaCierre ? new Date(fechaCierre).toISOString() : '—'}.`,
+      },
+    });
+  } catch (e) {
+    console.error('⚠️ No se pudo registrar el cierre en AuditLog (task ' + taskId + '):', e.message);
+  }
+};
 
 // --- NUEVA FUNCIÓN: INTERCEPTOR DE ZONA HORARIA Y FORMATOS ---
 // --- NUEVO INTERCEPTOR: DESTRUCTOR DE ZONAS HORARIAS ---
@@ -123,7 +150,8 @@ const taskController = {
         // Tomamos el string '2026-05-11T00:00:00.000Z', lo partimos por la 'T' y enviamos solo '2026-05-11'
         fecha_registro: task.fecha_registro ? new Date(task.fecha_registro).toISOString().split('T')[0] : '',
         fecha_inicio: task.fecha_inicio ? new Date(task.fecha_inicio).toISOString().split('T')[0] : '',
-        fecha_fin: task.fecha_fin ? new Date(task.fecha_fin).toISOString().split('T')[0] : ''
+        fecha_fin: task.fecha_fin ? new Date(task.fecha_fin).toISOString().split('T')[0] : '',
+        fecha_ejecucion: task.fecha_ejecucion ? new Date(task.fecha_ejecucion).toISOString().split('T')[0] : null
       }));
 
       res.json(formattedTasks);
@@ -263,11 +291,20 @@ quickUpdate: async (req, res) => {
         }
       }
 
+      // Estampar la fecha real de cierre cuando la tarea entra a un estado cerrado.
+      const cerrandoQuick = esEstadoCerrado(dataToUpdate.estado) && !esEstadoCerrado(oldTask.estado);
+      if (cerrandoQuick) dataToUpdate.fecha_ejecucion = new Date();
+
       // 2. Guardamos la actualización
       const updatedTask = await prisma.task.update({
         where: { id: parseInt(id) },
         data: dataToUpdate
       });
+
+      // Rastro del cierre en auditoría.
+      if (cerrandoQuick) {
+        await registrarCierreAudit(updatedTask.id, req.userId, oldTask.estado, updatedTask.estado, updatedTask.fecha_ejecucion);
+      }
 
       // 3. Disparar notificación si se completó la tarea mediante edición rápida
       if (oldTask.estado !== 'Completado' && updatedTask.estado === 'Completado') {
@@ -414,6 +451,9 @@ createBulk: async (req, res) => {
         avanceFinal = 100;
       }
 
+      // ¿La tarea entra a un estado cerrado en esta edición? (para estampar fecha_ejecucion)
+      const cerrandoUpdate = esEstadoCerrado(estadoFinal) && !esEstadoCerrado(oldTask.estado);
+
       const actividadEnMayusculas = data.actividad ? String(data.actividad).toUpperCase() : oldTask.actividad;
 
       const updatedTask = await prisma.task.update({
@@ -436,6 +476,7 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
           observacion: data.observacion,
           porcentaje_avance: avanceFinal,
           estado: estadoFinal,
+          fecha_ejecucion: cerrandoUpdate ? new Date() : oldTask.fecha_ejecucion,
           proyecto_id: data.proyecto_id ? parseInt(data.proyecto_id) : null,
           area_origen_id: data.area_origen_id ? parseInt(data.area_origen_id) : null,
           gerente_responsable: data.gerente_responsable,
@@ -450,6 +491,11 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
           orden_ejecucion: data.orden_ejecucion ? parseInt(data.orden_ejecucion) : null
         }
       });
+
+      // Rastro del cierre en auditoría (Completado o Cancelado).
+      if (cerrandoUpdate) {
+        await registrarCierreAudit(updatedTask.id, req.userId, oldTask.estado, updatedTask.estado, updatedTask.fecha_ejecucion);
+      }
 
       try {
         if (oldTask.estado !== 'Completado' && updatedTask.estado === 'Completado') {
@@ -601,7 +647,8 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
         ...task,
         fecha_registro: task.fecha_registro ? new Date(task.fecha_registro).toISOString().split('T')[0] : '',
         fecha_inicio: task.fecha_inicio ? new Date(task.fecha_inicio).toISOString().split('T')[0] : '',
-        fecha_fin: task.fecha_fin ? new Date(task.fecha_fin).toISOString().split('T')[0] : ''
+        fecha_fin: task.fecha_fin ? new Date(task.fecha_fin).toISOString().split('T')[0] : '',
+        fecha_ejecucion: task.fecha_ejecucion ? new Date(task.fecha_ejecucion).toISOString().split('T')[0] : null
       }));
 
       res.json(formattedControlTasks);
@@ -799,10 +846,11 @@ deleteEvidence: async (req, res) => {
               });
           }
 
-          // 3. Borrado lógico
+          // 3. Borrado lógico (cancelación). Estampamos fecha de cierre si aún no tenía.
+          const prevTask = await prisma.task.findUnique({ where: { id: taskId }, select: { fecha_ejecucion: true } });
           const tareaEliminada = await prisma.task.update({
               where: { id: taskId },
-              data: { estado: 'Cancelado' }
+              data: { estado: 'Cancelado', fecha_ejecucion: prevTask?.fecha_ejecucion ?? new Date() }
           });
 
           // 4. Registro en auditoría

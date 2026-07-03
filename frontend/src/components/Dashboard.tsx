@@ -1442,6 +1442,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       { key: 'tipo',               width: 18, header: 'Tipo' },
       { key: 'estado',             width: 14, header: 'Estado' },
       { key: 'fechaFin',           width: 16, header: 'Fecha Compromiso' },
+      { key: 'fechaCierre',        width: 16, header: 'Fecha de Cierre' },
       { key: 'diasAtraso',         width: 14, header: 'Días de Atraso' },
       { key: 'tematica',           width: 22, header: 'Temática' },
       { key: 'prioridad',          width: 13, header: 'Prioridad' },
@@ -1498,6 +1499,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       const isOverdue = overdueDays > 0;
       const rowBg = isOverdue ? 'FFfff1f2' : idx % 2 === 0 ? 'FFfafafa' : 'FFFFFFFF';
       const fechaDate = task.fecha_fin ? new Date(String(task.fecha_fin).split('T')[0] + 'T00:00:00') : null;
+      const fechaCierreDate = (task as any).fecha_ejecucion ? new Date(String((task as any).fecha_ejecucion).split('T')[0] + 'T00:00:00') : null;
       const totalSub = task.subtasks?.length || 0;
       const compSub = task.subtasks?.filter((s: any) => s.completada).length || 0;
       const avancePct = Number(task.porcentaje_avance) || 0;
@@ -1512,6 +1514,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         tipo: task.tipo || '-',
         estado: task.estado,
         fechaFin: fechaDate,
+        fechaCierre: fechaCierreDate,
         diasAtraso: isOverdue ? overdueDays : task.estado === 'Completado' ? 'Completada' : 'Al día',
         tematica: task.tematica || '-',
         prioridad: getPriorityLabel(task.prioridad),
@@ -1555,6 +1558,13 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         const fCell = row.getCell('fechaFin');
         fCell.numFmt = 'DD/MM/YYYY';
         fCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      }
+
+      // Fecha de cierre: mismo formato (vacía si la tarea aún no se ha cerrado)
+      if (fechaCierreDate) {
+        const fcCell = row.getCell('fechaCierre');
+        fcCell.numFmt = 'DD/MM/YYYY';
+        fcCell.alignment = { horizontal: 'center', vertical: 'middle' };
       }
 
       // Días de atraso: color
