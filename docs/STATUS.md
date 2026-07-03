@@ -404,18 +404,43 @@ Se resolvieron las decisiones de diseño de la sección 23 y se implementó la v
 
 **Modo Calendario (agregado 2026-07-02, mismo request):** toggle dentro de la vista Cronograma para alternar **Gantt (barras) ↔ Calendario (carga por día)**. El calendario es un heatmap mensual (cuadrícula lun–dom): cada día muestra el número de tareas y se colorea por intensidad (azul), con navegación de mes y la celda de "hoy" resaltada. Selector de métrica con **las 3 opciones**: tareas **activas** ese día (en curso, default), que **vencen** (fecha_fin) o que **inician** (fecha_inicio) ese día. Estados nuevos en `Dashboard.tsx`: `ganttMode`, `calMetric`, `calMonth`. Cuenta sobre el mismo conjunto de tareas activas del Gantt.
 
-**Estado (actualizado 2026-07-03): ✅ MERGEADO a `main`, solo falta desplegar.**
+**Estado (actualizado 2026-07-03): ✅ MERGEADO a `main` y ✅ PROBADO en la app con datos reales.**
 - ✅ Código completo (Gantt + Calendario) y **build de Vite verde**.
 - ✅ **VALIDADO por el usuario final** (OK al diseño). Único ajuste pedido y ya aplicado: **4º botón "Total"** en el selector del calendario = suma aritmética de activas + inician + vencen. Se decidió a conciencia que cuenta doble los días de inicio/fin; la nota al pie lo advierte explícitamente. (Se descartó renombrar/usar la unión porque el usuario quería la suma literal.)
 - ✅ **Code-review (xhigh, 2 revisores):** todo limpio salvo 1 hallazgo de robustez, **ya corregido** — el Gantt no acotaba fechas atípicas y un typo (ej. `2099`) truncaba la grilla / inflaba `totalWidth`. Fix: horizonte acotado a `[hoy−2 años, hoy+3 años]` + recorte de cada barra a `[0, totalWidth]`.
 - ✅ **Commiteado y mergeado:** rama `feat/cronograma-gantt` → **PR #1 MERGED** a `main` (commits `6e8b8e3` feature, `60f47b9` fix, `9ef1052` merge). Rama eliminada.
+- ✅ **PROBADO localmente contra la BD real (2026-07-03):** login `admin@taskflow.com` (is_admin) devuelve `perm_gantt_view`; el botón "Cronograma" aparece en el sidebar (gating OK); Gantt = 95 barras / 5 grupos / línea "hoy" / tooltips reales; Calendario Julio 2026 con pico 37/día (Activas) y 42/día (Total), celda de hoy resaltada, 4 botones de métrica.
 - Otros ajustes posibles que quedaron sin pedir (futuro): incluir completadas en "Vencen/Inician", drill-down al hacer clic en un día, retoques de color.
 
-**⚠️ PENDIENTE de despliegue (no se pudo hacer desde la máquina de dev: `DATABASE_URL` no está ni en `.env` ni en env del SO local). El orden importa:**
-1. **Backend primero**, en `backend/`: `npx prisma db push` + `npx prisma generate` + **reiniciar Node**. Hasta que la columna exista, guardar un usuario con el checkbox "Cronograma" marcado dará **error 500** (Prisma no conoce el campo). Los admin igual ven el Gantt (permiso `undefined` → cae en `is_admin`).
-2. **Frontend:** `npm run build` + republicar `dist/`.
+**⚠️ Despliegue — parcialmente hecho:**
+- El `backend/.env` del entorno de dev/pruebas apunta a la **MISMA BD de producción** (`taskflow_db` en `SV-BAQ772-DBA`). El `npx prisma db push` ya se corrió ahí → **la columna `perm_gantt_view` YA existe en la BD de producción** (cambio aditivo y seguro). **No hace falta repetir el `db push`.**
+- **Pendiente en el servidor de producción (IIS, otra máquina):** `git pull` → `npx prisma generate` → **reiniciar Node** → `npm run build` (frontend) → republicar `dist/`. Hasta regenerar el cliente + reiniciar Node en ese servidor, guardar un usuario con el checkbox "Cronograma" marcado dará **error 500** (el cliente Prisma de prod aún no conoce el campo); los admin igual ven la vista.
+- Para habilitar la vista a un jefe/PM: **Gestión de Usuarios → editar usuario → marcar "Ver Cronograma (Gantt)"**.
+- Nota de entorno: en esta máquina `npx prisma generate` falla con `EPERM` (OneDrive bloquea `node_modules`); se resuelve **deteniendo el backend** (que tiene cargado el engine) antes de generar.
 
 **Mejoras futuras posibles:** columna de nombres sticky al hacer scroll horizontal, filtros propios dentro de la vista, edición de fechas arrastrando barras (tocaría backend).
+
+---
+
+## Completado en sesión 2026-07-03
+
+### 25. Fecha de cierre de tareas (fecha_ejecucion) + registro en AuditLog
+
+Se detectó que **no se estaba capturando cuándo se cerraban las tareas**: de 111 tareas Completadas/Canceladas, 0 tenían `fecha_ejecucion`, y el `AuditLog` no registraba los cambios de estado (solo evidencias). Se implementó la captura automática.
+
+**Backend (`taskController.js`):**
+- Helper `esEstadoCerrado()` (tolerante a variantes de mayúsculas/género) + `registrarCierreAudit()`.
+- `fecha_ejecucion` se **estampa automáticamente con la fecha/hora del momento** cuando la tarea entra a un estado cerrado (Completado/Finalizado/Cancelado), en **las 3 rutas** posibles: `quickUpdate` (menú o 100%), `update` (edición completa) y `eliminarTareaDesdeControl` (cancelación desde Control, preservando la fecha si ya existía).
+- Cada cierre se registra en **`AuditLog`** (`TAREA COMPLETADA` / `TAREA CANCELADA`).
+- `getAll` (y el getter de control) ahora devuelven `fecha_ejecucion` al frontend (`YYYY-MM-DD` o `null`).
+
+**Frontend (`Dashboard.tsx`):**
+- Nueva columna **"Fecha de Cierre"** en el Excel exportado de Reportes (junto a "Fecha Compromiso"), formato `DD/MM/YYYY`, vacía si la tarea aún no se ha cerrado. `LAST_COL`/merges/autofiltro se auto-ajustan (se calculan desde `COLS.length`).
+
+**Notas:**
+- Las **111 tareas ya cerradas** quedan con la columna vacía (no hay dato histórico; el `AuditLog` tampoco lo tenía). Se llena de aquí en adelante.
+- Verificado: frontend compila, `node --check` OK, la API ya expone `fecha_ejecucion` en las 206 tareas. No se hizo prueba de escritura en vivo para no mutar la BD de producción (misma BD del entorno de pruebas).
+- Pendiente de despliegue en el servidor IIS: `git pull` + reiniciar Node (backend) + `npm run build` + republicar `dist/` (frontend). No requiere `db push` (la columna `fecha_ejecucion` ya existía en el esquema).
 
 ---
 
@@ -430,10 +455,10 @@ Se resolvieron las decisiones de diseño de la sección 23 y se implementó la v
 - ✅ **HECHO (sesión 2026-06-24):** `JWT_SECRET` rotado y fallback hardcodeado eliminado (ver sección 22). ⚠️ Falta aplicar el secreto nuevo en la variable de entorno del SO en **producción** y reiniciar Node.
 - ⚠️ **Seguridad (de sesión 2026-06-16):** rotar la contraseña de PostgreSQL expuesta en el historial de git (cuando se rote, re-encodear el `DATABASE_URL`).
 - **node_modules trackeado:** `backend/node_modules` está versionado y genera ruido en cada `git status`. Conviene `git rm -r --cached backend/node_modules` y añadirlo al `.gitignore`.
-- **Cronograma (Gantt + Calendario)** — ✅ validado, code-review + fix, **PR #1 MERGED a `main`** (ver sección 24). ⏳ **Solo falta desplegar** (en el servidor, en orden):
-  1. Backend, en `backend/`: `git pull` → `npx prisma db push` → `npx prisma generate` → **reiniciar Node**.
-  2. Frontend, en `frontend/`: `npm run build` → republicar `dist/` en IIS.
-  3. Para habilitar la vista a un jefe/PM: Gestión de Usuarios → editar usuario → marcar "Ver Cronograma (Gantt)". (Hasta hacer el `db push`, marcar ese checkbox al guardar da error 500; los admin igual ven la vista.)
+- **Cronograma (Gantt + Calendario)** — ✅ validado, code-review + fix, **PR #1 MERGED a `main`**, ✅ **probado en la app con datos reales** (ver sección 24). La columna `perm_gantt_view` **ya está en la BD de producción** (el `db push` se corrió contra la BD compartida). ⏳ **Falta solo desplegar los procesos del servidor IIS de prod:**
+  1. `git pull` → `npx prisma generate` → **reiniciar Node** (backend).
+  2. `npm run build` → republicar `dist/` (frontend).
+  3. Habilitar a jefes/PM: Gestión de Usuarios → editar usuario → marcar "Ver Cronograma (Gantt)".
 - Edición inline de título de subtarea en la vista de lista de tareas (actualmente solo en modal de detalles).
 - Verificar comportamiento de permisos con usuarios reales no-admin en producción.
 - Resolver drift de migraciones Prisma.
