@@ -8,7 +8,7 @@ import {
   Download, Upload, FolderKanban, CheckSquare, Square, ListChecks,
   PieChart as PieChartIconLucide, TrendingUp, Activity, FilterX, Lock, Columns,
   PlayCircle, Reply, Tag, GripVertical, Trophy, Medal, Menu, ChevronLeft, ChevronRight,
-  Link2, ExternalLink, NotebookPen
+  Link2, ExternalLink, NotebookPen, GanttChartSquare
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
@@ -207,7 +207,7 @@ const ChartsSection = ({ data }: { data: any[] }) => {
   );
 };
 
-type View = 'tasks' | 'users' | 'areas' | 'control' | 'projects' | 'reports'; 
+type View = 'tasks' | 'users' | 'areas' | 'control' | 'projects' | 'reports' | 'gantt';
 type DetailsTab = 'comments' | 'attachments' | 'subtasks';
 
 export default function App() {
@@ -361,6 +361,14 @@ export default function App() {
   const canViewAreas = currentUser?.is_admin || currentUser?.perm_areas_view;
   const canViewProjects = currentUser?.is_admin || currentUser?.perm_projects_view;
   const canViewReports = currentUser?.is_admin || currentUser?.perm_reports_view;
+  const canViewGantt = currentUser?.is_admin || (currentUser as any)?.perm_gantt_view;
+
+  // Estado local de la vista Cronograma / Gantt
+  const [ganttScale, setGanttScale] = useState<'week' | 'month' | 'quarter'>('month');
+  const [ganttCollapsed, setGanttCollapsed] = useState<Record<string, boolean>>({});
+  const [ganttMode, setGanttMode] = useState<'bars' | 'calendar'>('bars');
+  const [calMetric, setCalMetric] = useState<'active' | 'due' | 'start' | 'total'>('active');
+  const [calMonth, setCalMonth] = useState<{ y: number; m: number }>(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
 
   const handleLogout = async () => {
     localStorage.removeItem('token');
@@ -1362,6 +1370,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         perm_projects_view: formData.get('perm_projects_view') === 'on' ? 1 : 0, perm_projects_create: formData.get('perm_projects_create') === 'on' ? 1 : 0,
         perm_projects_edit: formData.get('perm_projects_edit') === 'on' ? 1 : 0, perm_projects_delete: formData.get('perm_projects_delete') === 'on' ? 1 : 0,
         perm_reports_view: formData.get('perm_reports_view') === 'on' ? 1 : 0,
+        perm_gantt_view: formData.get('perm_gantt_view') === 'on' ? 1 : 0,
         // FIX 2: Agregamos el nuevo permiso para edici  n en Control de Gesti  n
         perm_control_edit: formData.get('perm_control_edit') === 'on' ? 1 : 0,
 		
@@ -1867,6 +1876,340 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         </React.Fragment>
       );
     });
+  };
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Vista Cronograma (Gantt) — solo lectura, supervisión dirección + PM.
+  // Componente propio (sin dependencias): tareas activas agrupadas por proyecto
+  // sobre una línea de tiempo con escala semana/mes/trimestre.
+  // ───────────────────────────────────────────────────────────────────────
+  const renderGanttView = () => {
+    const MS_DAY = 86400000;
+    const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+    // Parseo sin desfase de zona horaria (mismo patrón que getDaysOverdue).
+    const parseLocalDate = (v: any): Date | null => {
+      if (!v) return null;
+      const parts = String(v).split('T')[0].split('-');
+      if (parts.length !== 3) return null;
+      const [y, m, d] = parts.map(Number);
+      if (!y || !m || !d) return null;
+      const dt = new Date(y, m - 1, d);
+      return isNaN(dt.getTime()) ? null : dt;
+    };
+
+    // Normaliza estados inconsistentes en BD ("En Espera"/"En espera", "Planeada"/"Planeado").
+    const normalizeEstado = (e: string) => {
+      const s = String(e || '').trim().toLowerCase();
+      if (s.startsWith('planea')) return 'Planeado';
+      if (s.startsWith('en curso')) return 'En curso';
+      if (s.startsWith('en espera')) return 'En espera';
+      if (s.startsWith('complet') || s.startsWith('finaliz')) return 'Completado';
+      if (s.startsWith('cancel')) return 'Cancelado';
+      return String(e || '').trim() || 'Sin estado';
+    };
+
+    const ESTADO_CLR: Record<string, string> = {
+      'Planeado': '#64748b', 'En curso': '#3b82f6', 'En espera': '#f59e0b',
+      'Completado': '#10b981', 'Cancelado': '#94a3b8', 'Sin estado': '#cbd5e1',
+    };
+
+    const hoy = new Date(); hoy.setHours(0, 0, 0, 0);
+
+    // 1) Tareas activas con fechas saneadas (swap si fin < inicio).
+    const activos = tasks
+      .map(t => {
+        const estado = normalizeEstado(t.estado);
+        let ini = parseLocalDate(t.fecha_inicio);
+        let fin = parseLocalDate(t.fecha_fin);
+        if (!ini && fin) ini = fin;
+        if (!fin && ini) fin = ini;
+        if (!ini || !fin) return null;
+        if (fin.getTime() < ini.getTime()) { const tmp = ini; ini = fin; fin = tmp; }
+        return { task: t, estado, ini, fin };
+      })
+      .filter((x): x is { task: any; estado: string; ini: Date; fin: Date } => !!x)
+      .filter(x => x.estado !== 'Completado' && x.estado !== 'Cancelado');
+
+    if (activos.length === 0) {
+      return (
+        <div className="bg-white p-12 rounded-2xl border border-slate-200 shadow-sm text-center">
+          <GanttChartSquare size={40} className="text-slate-300 mx-auto mb-4" />
+          <p className="text-slate-500 text-sm">No hay tareas activas para mostrar en el cronograma.</p>
+        </div>
+      );
+    }
+
+    // 2) Rango temporal (incluye "hoy" para que la línea siempre sea visible).
+    const minT = Math.min(hoy.getTime(), ...activos.map(a => a.ini.getTime()));
+    const maxT = Math.max(hoy.getTime(), ...activos.map(a => a.fin.getTime()));
+
+    const dayWidth = ganttScale === 'week' ? 11 : ganttScale === 'quarter' ? 1.7 : 3.6;
+
+    // Alinear el inicio de la grilla al comienzo del primer periodo.
+    const gridStart = new Date(minT);
+    gridStart.setHours(0, 0, 0, 0);
+    if (ganttScale === 'week') {
+      gridStart.setDate(gridStart.getDate() - ((gridStart.getDay() + 6) % 7)); // al lunes
+    } else if (ganttScale === 'quarter') {
+      gridStart.setDate(1); gridStart.setMonth(Math.floor(gridStart.getMonth() / 3) * 3);
+    } else {
+      gridStart.setDate(1);
+    }
+
+    // Construir periodos (columnas) hasta cubrir maxT.
+    const periods: { start: Date; label: string }[] = [];
+    const cursor = new Date(gridStart);
+    let guard = 0;
+    while (cursor.getTime() <= maxT && guard < 800) {
+      guard++;
+      let label = '';
+      if (ganttScale === 'week') label = `${cursor.getDate()} ${MESES[cursor.getMonth()]}`;
+      else if (ganttScale === 'quarter') label = `Q${Math.floor(cursor.getMonth() / 3) + 1} ${String(cursor.getFullYear()).slice(2)}`;
+      else label = `${MESES[cursor.getMonth()]} ${String(cursor.getFullYear()).slice(2)}`;
+      periods.push({ start: new Date(cursor), label });
+      if (ganttScale === 'week') cursor.setDate(cursor.getDate() + 7);
+      else if (ganttScale === 'quarter') cursor.setMonth(cursor.getMonth() + 3);
+      else cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    const gridStartT = gridStart.getTime();
+    const gridEndT = cursor.getTime();
+    const totalWidth = ((gridEndT - gridStartT) / MS_DAY) * dayWidth;
+    const xOf = (t: number) => ((t - gridStartT) / MS_DAY) * dayWidth;
+    const todayX = xOf(hoy.getTime());
+    const LABEL_W = 260;
+
+    // 3) Agrupar por proyecto.
+    const grupos: { key: string; nombre: string; items: typeof activos }[] = [];
+    const idx: Record<string, number> = {};
+    for (const a of activos) {
+      const proj = projects.find(p => p.id === a.task.proyecto_id);
+      const key = proj ? `p${proj.id}` : 'sin';
+      const nombre = proj ? proj.nombre : 'Sin proyecto';
+      if (idx[key] === undefined) { idx[key] = grupos.length; grupos.push({ key, nombre, items: [] }); }
+      grupos[idx[key]].items.push(a);
+    }
+    grupos.forEach(g => g.items.sort((x, y) => x.ini.getTime() - y.ini.getTime()));
+    grupos.sort((a, b) => a.nombre.localeCompare(b.nombre));
+
+    const scaleBtn = (val: 'week' | 'month' | 'quarter', txt: string) => (
+      <button onClick={() => setGanttScale(val)} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${ganttScale === val ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{txt}</button>
+    );
+
+    const leyenda = [
+      { label: 'Planeado', clr: ESTADO_CLR['Planeado'] },
+      { label: 'En curso', clr: ESTADO_CLR['En curso'] },
+      { label: 'En espera', clr: ESTADO_CLR['En espera'] },
+      { label: 'Atrasada', clr: '#ef4444' },
+    ];
+
+    const modeBtn = (val: 'bars' | 'calendar', icon: React.ReactNode, txt: string) => (
+      <button onClick={() => setGanttMode(val)} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${ganttMode === val ? 'bg-slate-800 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{icon}{txt}</button>
+    );
+
+    // ── Modo Calendario (heatmap de carga por día) ──
+    const MESES_FULL = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+    const WEEKDAYS = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    const metricLabel = calMetric === 'due' ? 'que vencen' : calMetric === 'start' ? 'que inician' : calMetric === 'total' ? 'en total (activas + inician + vencen)' : 'activas';
+    const daysInMonth = new Date(calMonth.y, calMonth.m + 1, 0).getDate();
+    const firstDow = (new Date(calMonth.y, calMonth.m, 1).getDay() + 6) % 7; // 0 = lunes
+    const countForDay = (day: number) => {
+      const t = new Date(calMonth.y, calMonth.m, day, 0, 0, 0, 0).getTime();
+      // 'total' = suma aritmética activas + inician + vencen; los días de inicio/fin cuentan más de una vez a propósito.
+      if (calMetric === 'total') {
+        return activos.reduce((acc, a) => {
+          let n = 0;
+          if (a.ini.getTime() <= t && t <= a.fin.getTime()) n++; // activa
+          if (a.ini.getTime() === t) n++;                        // inicia
+          if (a.fin.getTime() === t) n++;                        // vence
+          return acc + n;
+        }, 0);
+      }
+      return activos.filter(a => {
+        if (calMetric === 'due') return a.fin.getTime() === t;
+        if (calMetric === 'start') return a.ini.getTime() === t;
+        return a.ini.getTime() <= t && t <= a.fin.getTime();
+      }).length;
+    };
+    const dayNums = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+    const dayCounts = dayNums.map(countForDay);
+    const maxCount = Math.max(1, ...dayCounts);
+    const calCells: (number | null)[] = [...Array(firstDow).fill(null), ...dayNums];
+    while (calCells.length % 7 !== 0) calCells.push(null);
+    const shiftMonth = (delta: number) => setCalMonth(prev => { const d = new Date(prev.y, prev.m + delta, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+    const isTodayCell = (day: number) => hoy.getFullYear() === calMonth.y && hoy.getMonth() === calMonth.m && hoy.getDate() === day;
+    const cellBg = (c: number) => c === 0 ? '#f8fafc' : `rgba(37, 99, 235, ${0.15 + (c / maxCount) * 0.7})`;
+    const cellStrong = (c: number) => (c / maxCount) > 0.55;
+    const metricBtn = (val: 'active' | 'due' | 'start' | 'total', txt: string) => (
+      <button onClick={() => setCalMetric(val)} className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${calMetric === val ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{txt}</button>
+    );
+
+    return (
+      <div className="space-y-4">
+        {/* Barra de control */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Vista</span>
+              <div className="flex gap-1">{modeBtn('bars', <GanttChartSquare size={13} />, 'Gantt')}{modeBtn('calendar', <Calendar size={13} />, 'Calendario')}</div>
+            </div>
+            {ganttMode === 'bars' ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Escala</span>
+                <div className="flex gap-1">{scaleBtn('week', 'Semana')}{scaleBtn('month', 'Mes')}{scaleBtn('quarter', 'Trimestre')}</div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Contar</span>
+                <div className="flex gap-1">{metricBtn('active', 'Activas')}{metricBtn('due', 'Vencen')}{metricBtn('start', 'Inician')}{metricBtn('total', 'Total')}</div>
+              </div>
+            )}
+            <span className="text-xs text-slate-500 font-medium">{activos.length} tareas activas · {grupos.length} proyectos</span>
+          </div>
+          {ganttMode === 'bars' && (
+            <div className="flex items-center gap-3 flex-wrap">
+              {leyenda.map(l => (
+                <div key={l.label} className="flex items-center gap-1.5">
+                  <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.clr }} />
+                  <span className="text-[11px] font-medium text-slate-500">{l.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Cronograma (Gantt) */}
+        {ganttMode === 'bars' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <div className="relative" style={{ minWidth: LABEL_W + totalWidth }}>
+              {/* Overlay de gridlines (detrás del contenido) */}
+              <div className="absolute top-0 bottom-0 pointer-events-none" style={{ left: LABEL_W, width: totalWidth }}>
+                {periods.map((p, i) => (
+                  <div key={i} className="absolute top-0 bottom-0 border-r border-slate-100" style={{ left: xOf(p.start.getTime()) }} />
+                ))}
+              </div>
+
+              {/* Cabecera de periodos */}
+              <div className="flex sticky top-0 z-10 bg-slate-50 border-b border-slate-200">
+                <div className="shrink-0 px-4 py-3 text-[11px] font-bold text-slate-400 uppercase tracking-widest border-r border-slate-200" style={{ width: LABEL_W }}>Tarea / Proyecto</div>
+                <div className="relative" style={{ width: totalWidth, height: 40 }}>
+                  {periods.map((p, i) => (
+                    <div key={i} className="absolute top-0 h-full flex items-center px-2 text-[11px] font-semibold text-slate-500 whitespace-nowrap" style={{ left: xOf(p.start.getTime()) }}>{p.label}</div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Grupos por proyecto */}
+              {grupos.map(g => {
+                const colapsado = ganttCollapsed[g.key];
+                const avg = Math.round(g.items.reduce((s, x) => s + (Number(x.task.porcentaje_avance) || 0), 0) / g.items.length);
+                return (
+                  <div key={g.key}>
+                    <div className="flex items-stretch bg-slate-50/70 border-b border-slate-200 hover:bg-slate-100/70 cursor-pointer" onClick={() => setGanttCollapsed(prev => ({ ...prev, [g.key]: !prev[g.key] }))}>
+                      <div className="shrink-0 px-3 py-2.5 flex items-center gap-2 border-r border-slate-200" style={{ width: LABEL_W }}>
+                        <ChevronDown size={15} className={`text-slate-400 transition-transform shrink-0 ${colapsado ? '-rotate-90' : ''}`} />
+                        <FolderKanban size={14} className="text-indigo-500 shrink-0" />
+                        <span className="text-sm font-bold text-slate-700 truncate" title={g.nombre}>{g.nombre}</span>
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-200/70 px-1.5 py-0.5 rounded-full shrink-0">{g.items.length}</span>
+                      </div>
+                      <div className="relative flex items-center" style={{ width: totalWidth }}>
+                        <span className="text-[10px] font-bold text-slate-400 px-3">Avance prom. {avg}%</span>
+                      </div>
+                    </div>
+
+                    {!colapsado && g.items.map((a, ri) => {
+                      const atrasada = a.fin.getTime() < hoy.getTime();
+                      const clr = atrasada ? '#ef4444' : (ESTADO_CLR[a.estado] || '#64748b');
+                      const left = xOf(a.ini.getTime());
+                      const w = Math.max(xOf(a.fin.getTime() + MS_DAY) - left, 6);
+                      const avance = Math.max(0, Math.min(100, Number(a.task.porcentaje_avance) || 0));
+                      const resp = a.task.responsable || '';
+                      return (
+                        <div key={a.task.id ?? ri} className="flex items-stretch border-b border-slate-100 hover:bg-blue-50/30">
+                          <div className="shrink-0 px-4 py-2 border-r border-slate-200 flex flex-col justify-center" style={{ width: LABEL_W }}>
+                            <span className="text-xs font-medium text-slate-700 truncate" title={a.task.actividad}>{a.task.actividad}</span>
+                            {resp && <span className="text-[10px] text-slate-400 truncate">{resp}</span>}
+                          </div>
+                          <div className="relative" style={{ width: totalWidth, height: 40 }}>
+                            <div
+                              className="absolute top-1/2 -translate-y-1/2 rounded-md shadow-sm overflow-hidden"
+                              style={{ left, width: w, height: 20, backgroundColor: `${clr}33`, border: `1.5px solid ${clr}` }}
+                              title={`${a.task.actividad}\n${a.estado}${atrasada ? ' (atrasada)' : ''}\n${a.ini.toLocaleDateString('es-CO')} → ${a.fin.toLocaleDateString('es-CO')}\nAvance: ${avance}%`}
+                            >
+                              <div className="h-full" style={{ width: `${avance}%`, backgroundColor: clr }} />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+
+              {/* Línea de "hoy" (sobre el contenido) */}
+              {todayX >= 0 && todayX <= totalWidth && (
+                <div className="absolute top-0 bottom-0 z-20 pointer-events-none" style={{ left: LABEL_W + todayX }}>
+                  <div className="w-0.5 h-full bg-red-500/70" />
+                  <span className="absolute top-0 left-1 text-[9px] font-bold text-red-600 bg-white/90 px-1 rounded-sm">hoy</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        )}
+
+        {/* Calendario (carga por día) */}
+        {ganttMode === 'calendar' && (
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+            {/* Navegación de mes */}
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => shiftMonth(-1)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors" title="Mes anterior"><ChevronLeft size={18} /></button>
+              <div className="text-center">
+                <h3 className="text-sm font-bold text-slate-800">{MESES_FULL[calMonth.m]} {calMonth.y}</h3>
+                <p className="text-[11px] text-slate-400">Tareas {metricLabel} por día · pico {maxCount}/día</p>
+              </div>
+              <button onClick={() => shiftMonth(1)} className="p-2 text-slate-500 hover:bg-slate-100 rounded-lg transition-colors" title="Mes siguiente"><ChevronRight size={18} /></button>
+            </div>
+            {/* Cabecera de días */}
+            <div className="grid grid-cols-7 gap-1.5 mb-1.5">
+              {WEEKDAYS.map(w => <div key={w} className="text-center text-[10px] font-bold text-slate-400 uppercase">{w}</div>)}
+            </div>
+            {/* Celdas del mes */}
+            <div className="grid grid-cols-7 gap-1.5">
+              {calCells.map((day, i) => {
+                if (day === null) return <div key={i} />;
+                const c = dayCounts[day - 1];
+                const strong = cellStrong(c);
+                const today = isTodayCell(day);
+                return (
+                  <div
+                    key={i}
+                    title={`${day} de ${MESES_FULL[calMonth.m]}: ${c} tarea${c === 1 ? '' : 's'} ${metricLabel}`}
+                    className={`aspect-square rounded-lg border flex flex-col items-center justify-center transition-all ${today ? 'ring-2 ring-red-400 border-red-300' : 'border-slate-100'}`}
+                    style={{ backgroundColor: cellBg(c) }}
+                  >
+                    <span className="text-[10px] font-semibold" style={{ color: strong ? 'rgba(255,255,255,0.85)' : '#94a3b8' }}>{day}</span>
+                    {c > 0 && <span className="text-base sm:text-lg font-black leading-none" style={{ color: strong ? '#ffffff' : '#1e40af' }}>{c}</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-4">
+              {calMetric === 'active'
+                ? 'Cada celda cuenta las tareas en curso ese día (inicio ≤ día ≤ fin).'
+                : calMetric === 'due'
+                  ? 'Cada celda cuenta las tareas cuya fecha de fin es ese día.'
+                  : calMetric === 'start'
+                    ? 'Cada celda cuenta las tareas cuya fecha de inicio es ese día.'
+                    : 'Suma de las tres métricas (activas + inician + vencen). Ojo: los días de inicio y de fin se cuentan más de una vez, por lo que el número es mayor que el de tareas reales.'}
+              {' '}Solo tareas activas (excluye Completadas/Canceladas).
+            </p>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const renderReportsView = () => {
@@ -2590,6 +2933,7 @@ case 'responsable':
           <button onClick={() => { setCurrentView('tasks'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Panel de Actividades" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'tasks' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FileText size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Panel de Actividades</span></button>
           {canViewProjects && <button onClick={() => { setCurrentView('projects'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de Proyectos" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'projects' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FolderKanban size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de Proyectos</span></button>}
           {canViewReports && <button onClick={() => { setCurrentView('reports'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Reportes" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'reports' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><PieChartIconLucide size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Reportes</span></button>}
+          {canViewGantt && <button onClick={() => { setCurrentView('gantt'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Cronograma (Gantt)" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'gantt' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><GanttChartSquare size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Cronograma</span></button>}
           {canViewUsers && <button onClick={() => { setCurrentView('users'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de Usuarios" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'users' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de Usuarios</span></button>}
           {canViewAreas && <button onClick={() => { setCurrentView('areas'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de áreas" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de áreas</span></button>}
           {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => { setCurrentView('control'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Control de Gestión" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Control de Gestión</span></button>}
@@ -2633,6 +2977,11 @@ case 'responsable':
                     <>
                       <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 capitalize truncate">Reportes Gerenciales</h2>
                       <p className="text-slate-500 text-xs sm:text-sm truncate">Visualización de datos y métricas globales</p>
+                    </>
+                  ) : currentView === 'gantt' ? (
+                    <>
+                      <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 capitalize truncate">Cronograma (Gantt)</h2>
+                      <p className="text-slate-500 text-xs sm:text-sm truncate">Supervisión de tareas activas por proyecto en la línea de tiempo</p>
                     </>
                   ) : (
                     <>
@@ -2775,6 +3124,8 @@ case 'responsable':
         <div className="p-4 lg:p-8">
           
           {currentView === 'reports' && renderReportsView()}
+
+          {currentView === 'gantt' && renderGanttView()}
 
           {currentView === 'tasks' && (
             <>
@@ -3571,6 +3922,7 @@ case 'responsable':
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Subtareas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_view" defaultChecked={editingItem?.perm_subtasks_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_create" defaultChecked={editingItem?.perm_subtasks_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_edit" defaultChecked={editingItem?.perm_subtasks_edit} className="rounded text-blue-600" /> Marcar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_edit_title" defaultChecked={editingItem?.perm_subtasks_edit_title} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_subtasks_delete" defaultChecked={editingItem?.perm_subtasks_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Proyectos</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_view" defaultChecked={editingItem?.perm_projects_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_create" defaultChecked={editingItem?.perm_projects_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_edit" defaultChecked={editingItem?.perm_projects_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_delete" defaultChecked={editingItem?.perm_projects_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Reportes</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_reports_view" defaultChecked={editingItem?.perm_reports_view} className="rounded text-indigo-600" /> Ver Reportes</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Cronograma</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_gantt_view" defaultChecked={(editingItem as any)?.perm_gantt_view} className="rounded text-indigo-600" /> Ver Cronograma (Gantt)</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Usuarios</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_view" defaultChecked={editingItem?.perm_users_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_create" defaultChecked={editingItem?.perm_users_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_edit" defaultChecked={editingItem?.perm_users_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_delete" defaultChecked={editingItem?.perm_users_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Areas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_view" defaultChecked={editingItem?.perm_areas_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_create" defaultChecked={editingItem?.perm_areas_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_edit" defaultChecked={editingItem?.perm_areas_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_delete" defaultChecked={editingItem?.perm_areas_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                       </div>

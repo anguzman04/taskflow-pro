@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-06-25_
+_Última actualización: 2026-07-02_
 
 ---
 
@@ -363,6 +363,8 @@ Se rotó el `JWT_SECRET` (antes el de ejemplo `taskflow_secret_key_123`, expuest
 
 ### 23. Diagrama Gantt — re-evaluación de viabilidad (decisiones de diseño pendientes)
 
+> ✅ **Resuelto e implementado en la sesión 2026-07-02 — ver sección 24.**
+
 Se retomó el tema del Gantt y se hizo un **análisis de los datos reales en BD (199 tareas)**. Conclusión: **ya es viable**; el blocker original quedó obsoleto.
 
 **Hallazgos sobre los datos:**
@@ -380,6 +382,42 @@ Se retomó el tema del Gantt y se hizo un **análisis de los datos reales en BD 
 
 ---
 
+## Completado en sesión 2026-07-02
+
+### 24. Diagrama Gantt — IMPLEMENTADO (componente propio, solo lectura)
+
+Se resolvieron las decisiones de diseño de la sección 23 y se implementó la vista. **Enfoque: componente propio, sin dependencias nuevas.** Propósito: **supervisión para dirección + project manager**. El build de Vite compila sin errores.
+
+**Decisiones tomadas:**
+- **Enfoque:** componente propio (SVG/divs + Tailwind), 0 dependencias.
+- **Agrupación:** por Proyecto (grupos colapsables; tareas sin proyecto → "Sin proyecto").
+- **Alcance:** solo tareas activas (excluye Completado/Cancelado).
+- **Interacción:** solo lectura (no toca backend).
+- **Escala:** Semana / Mes / Trimestre (default Mes).
+- **Permiso:** nuevo flag `perm_gantt_view` (+ `is_admin`), pensado para habilitárselo a jefes a futuro.
+
+**Cambios de código:**
+- `backend/prisma/schema.prisma`: nuevo campo `perm_gantt_view Boolean @default(false)`. No se tocaron controllers ni auth: el spread `...userData` de `userController` y el `...user` de `authController` propagan el permiso automáticamente. (Nota: no existe `prisma/` raíz; el mirror mencionado en `CLAUDE.md` ya no aplica.)
+- `frontend/src/components/Dashboard.tsx`: import `GanttChartSquare`; `type View` + `'gantt'`; `canViewGantt`; estados `ganttScale`/`ganttCollapsed`; botón en sidebar (junto a Reportes); título en header; dispatch `renderGanttView()`; función `renderGanttView` (antes de `renderReportsView`); `perm_gantt_view` en el payload de `handleUserSubmit` y checkbox "Cronograma" en el formulario de usuario.
+
+**Detalles de render:** barras coloreadas por estado, **atrasadas en rojo**, **línea de "hoy"**, barra de avance interna y tooltips (actividad/estado/fechas/avance). Saneo de datos en el render: normaliza estados inconsistentes (`"En Espera"`→`"En espera"`, `"Planeada"`→`"Planeado"`), *swap* si `fecha_fin < fecha_inicio`, ancho mínimo para `inicio == fin`. Parseo de fechas sin desfase de zona horaria (llegan como `YYYY-MM-DD` desde `taskController.getAll`, que devuelve **todas** las tareas → visión global para supervisión). Sin flechas de dependencia (el campo `prerequisito` no son referencias a otras tareas).
+
+**Modo Calendario (agregado 2026-07-02, mismo request):** toggle dentro de la vista Cronograma para alternar **Gantt (barras) ↔ Calendario (carga por día)**. El calendario es un heatmap mensual (cuadrícula lun–dom): cada día muestra el número de tareas y se colorea por intensidad (azul), con navegación de mes y la celda de "hoy" resaltada. Selector de métrica con **las 3 opciones**: tareas **activas** ese día (en curso, default), que **vencen** (fecha_fin) o que **inician** (fecha_inicio) ese día. Estados nuevos en `Dashboard.tsx`: `ganttMode`, `calMetric`, `calMonth`. Cuenta sobre el mismo conjunto de tareas activas del Gantt.
+
+**Estado al cierre de la sesión 2026-07-02:**
+- ✅ Código completo (Gantt + Calendario) y **build de Vite verde**.
+- ✅ **VALIDADO por el usuario final** (OK al diseño). Único ajuste pedido y ya aplicado: **4º botón "Total"** en el selector del calendario = suma aritmética de activas + inician + vencen. Se decidió a conciencia que cuenta doble los días de inicio/fin; la nota al pie lo advierte explícitamente. (Se descartó renombrar/usar la unión porque el usuario quería la suma literal.)
+- ⚠️ **SIN COMMIT todavía.** Archivos tocados en el working tree, pendientes de commitear: `backend/prisma/schema.prisma`, `frontend/src/components/Dashboard.tsx`, `docs/STATUS.md`.
+- Otros ajustes posibles que quedaron sin pedir (futuro): incluir completadas en "Vencen/Inician", drill-down al hacer clic en un día, retoques de color.
+
+**⚠️ PENDIENTE de despliegue (no se pudo hacer desde la máquina de dev: `DATABASE_URL` no está ni en `.env` ni en env del SO local). El orden importa:**
+1. **Backend primero**, en `backend/`: `npx prisma db push` + `npx prisma generate` + **reiniciar Node**. Hasta que la columna exista, guardar un usuario con el checkbox "Cronograma" marcado dará **error 500** (Prisma no conoce el campo). Los admin igual ven el Gantt (permiso `undefined` → cae en `is_admin`).
+2. **Frontend:** `npm run build` + republicar `dist/`.
+
+**Mejoras futuras posibles:** columna de nombres sticky al hacer scroll horizontal, filtros propios dentro de la vista, edición de fechas arrastrando barras (tocaría backend).
+
+---
+
 ## Deuda técnica conocida
 - Drift de migraciones Prisma: se ha usado `prisma db push` sin generar migraciones formales. Resolver con `prisma migrate resolve` o generando una migración base.
 - Backend corre con `node index.js` (sin nodemon en producción). Para dev usar `npm run dev`.
@@ -391,7 +429,10 @@ Se retomó el tema del Gantt y se hizo un **análisis de los datos reales en BD 
 - ✅ **HECHO (sesión 2026-06-24):** `JWT_SECRET` rotado y fallback hardcodeado eliminado (ver sección 22). ⚠️ Falta aplicar el secreto nuevo en la variable de entorno del SO en **producción** y reiniciar Node.
 - ⚠️ **Seguridad (de sesión 2026-06-16):** rotar la contraseña de PostgreSQL expuesta en el historial de git (cuando se rote, re-encodear el `DATABASE_URL`).
 - **node_modules trackeado:** `backend/node_modules` está versionado y genera ruido en cada `git status`. Conviene `git rm -r --cached backend/node_modules` y añadirlo al `.gitignore`.
-- **Diagrama Gantt** (re-evaluado sesión 2026-06-25 — ✅ viable, decisiones de diseño pendientes): ver sección 23.
+- **Cronograma (Gantt + Calendario)** — sesión 2026-07-02: código completo y build verde (ver sección 24). Flujo pendiente en orden:
+  1. ⏳ **Validar el diseño con el usuario final** (mockup interactivo ya entregado). Aplicar ajustes si los pide.
+  2. **Commitear** los cambios (working tree sin commit): `backend/prisma/schema.prisma` + `frontend/src/components/Dashboard.tsx` + `docs/STATUS.md`. Mensaje sugerido: `feat(gantt): vista Cronograma (Gantt + calendario de carga) + permiso perm_gantt_view`.
+  3. **Desplegar:** en el servidor `npx prisma db push` + `npx prisma generate` + reiniciar Node (backend primero) → luego `npm run build` + republicar `dist/` del frontend.
 - Edición inline de título de subtarea en la vista de lista de tareas (actualmente solo en modal de detalles).
 - Verificar comportamiento de permisos con usuarios reales no-admin en producción.
 - Resolver drift de migraciones Prisma.
