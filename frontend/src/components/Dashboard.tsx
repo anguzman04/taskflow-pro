@@ -1941,8 +1941,13 @@ const handleDeleteEvidence = async (evidenceId: number) => {
     }
 
     // 2) Rango temporal (incluye "hoy" para que la línea siempre sea visible).
-    const minT = Math.min(hoy.getTime(), ...activos.map(a => a.ini.getTime()));
-    const maxT = Math.max(hoy.getTime(), ...activos.map(a => a.fin.getTime()));
+    //    Acotado a una ventana sensata [hoy−2 años, hoy+3 años] para que una fecha
+    //    atípica/errónea (typo tipo 2099) no trunque la grilla ni infle el ancho.
+    //    Las barras fuera de la ventana se recortan al borde (ver más abajo).
+    const floorT = new Date(hoy.getFullYear() - 2, 0, 1).getTime();
+    const ceilT = new Date(hoy.getFullYear() + 3, 11, 31).getTime();
+    const minT = Math.max(floorT, Math.min(hoy.getTime(), ...activos.map(a => a.ini.getTime())));
+    const maxT = Math.min(ceilT, Math.max(hoy.getTime(), ...activos.map(a => a.fin.getTime())));
 
     const dayWidth = ganttScale === 'week' ? 11 : ganttScale === 'quarter' ? 1.7 : 3.6;
 
@@ -2122,8 +2127,11 @@ const handleDeleteEvidence = async (evidenceId: number) => {
                     {!colapsado && g.items.map((a, ri) => {
                       const atrasada = a.fin.getTime() < hoy.getTime();
                       const clr = atrasada ? '#ef4444' : (ESTADO_CLR[a.estado] || '#64748b');
-                      const left = xOf(a.ini.getTime());
-                      const w = Math.max(xOf(a.fin.getTime() + MS_DAY) - left, 6);
+                      // Recorte al rango visible [0, totalWidth]: una tarea con fecha fuera
+                      // del horizonte se pega al borde en vez de dibujarse fuera de la grilla.
+                      const left = Math.max(0, Math.min(xOf(a.ini.getTime()), totalWidth));
+                      const right = Math.max(0, Math.min(xOf(a.fin.getTime() + MS_DAY), totalWidth));
+                      const w = Math.max(right - left, 6);
                       const avance = Math.max(0, Math.min(100, Number(a.task.porcentaje_avance) || 0));
                       const resp = a.task.responsable || '';
                       return (
