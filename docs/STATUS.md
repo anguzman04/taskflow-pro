@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-07-02_
+_Última actualización: 2026-07-03_
 
 ---
 
@@ -404,10 +404,11 @@ Se resolvieron las decisiones de diseño de la sección 23 y se implementó la v
 
 **Modo Calendario (agregado 2026-07-02, mismo request):** toggle dentro de la vista Cronograma para alternar **Gantt (barras) ↔ Calendario (carga por día)**. El calendario es un heatmap mensual (cuadrícula lun–dom): cada día muestra el número de tareas y se colorea por intensidad (azul), con navegación de mes y la celda de "hoy" resaltada. Selector de métrica con **las 3 opciones**: tareas **activas** ese día (en curso, default), que **vencen** (fecha_fin) o que **inician** (fecha_inicio) ese día. Estados nuevos en `Dashboard.tsx`: `ganttMode`, `calMetric`, `calMonth`. Cuenta sobre el mismo conjunto de tareas activas del Gantt.
 
-**Estado al cierre de la sesión 2026-07-02:**
+**Estado (actualizado 2026-07-03): ✅ MERGEADO a `main`, solo falta desplegar.**
 - ✅ Código completo (Gantt + Calendario) y **build de Vite verde**.
 - ✅ **VALIDADO por el usuario final** (OK al diseño). Único ajuste pedido y ya aplicado: **4º botón "Total"** en el selector del calendario = suma aritmética de activas + inician + vencen. Se decidió a conciencia que cuenta doble los días de inicio/fin; la nota al pie lo advierte explícitamente. (Se descartó renombrar/usar la unión porque el usuario quería la suma literal.)
-- ⚠️ **SIN COMMIT todavía.** Archivos tocados en el working tree, pendientes de commitear: `backend/prisma/schema.prisma`, `frontend/src/components/Dashboard.tsx`, `docs/STATUS.md`.
+- ✅ **Code-review (xhigh, 2 revisores):** todo limpio salvo 1 hallazgo de robustez, **ya corregido** — el Gantt no acotaba fechas atípicas y un typo (ej. `2099`) truncaba la grilla / inflaba `totalWidth`. Fix: horizonte acotado a `[hoy−2 años, hoy+3 años]` + recorte de cada barra a `[0, totalWidth]`.
+- ✅ **Commiteado y mergeado:** rama `feat/cronograma-gantt` → **PR #1 MERGED** a `main` (commits `6e8b8e3` feature, `60f47b9` fix, `9ef1052` merge). Rama eliminada.
 - Otros ajustes posibles que quedaron sin pedir (futuro): incluir completadas en "Vencen/Inician", drill-down al hacer clic en un día, retoques de color.
 
 **⚠️ PENDIENTE de despliegue (no se pudo hacer desde la máquina de dev: `DATABASE_URL` no está ni en `.env` ni en env del SO local). El orden importa:**
@@ -429,10 +430,10 @@ Se resolvieron las decisiones de diseño de la sección 23 y se implementó la v
 - ✅ **HECHO (sesión 2026-06-24):** `JWT_SECRET` rotado y fallback hardcodeado eliminado (ver sección 22). ⚠️ Falta aplicar el secreto nuevo en la variable de entorno del SO en **producción** y reiniciar Node.
 - ⚠️ **Seguridad (de sesión 2026-06-16):** rotar la contraseña de PostgreSQL expuesta en el historial de git (cuando se rote, re-encodear el `DATABASE_URL`).
 - **node_modules trackeado:** `backend/node_modules` está versionado y genera ruido en cada `git status`. Conviene `git rm -r --cached backend/node_modules` y añadirlo al `.gitignore`.
-- **Cronograma (Gantt + Calendario)** — sesión 2026-07-02: código completo y build verde (ver sección 24). Flujo pendiente en orden:
-  1. ⏳ **Validar el diseño con el usuario final** (mockup interactivo ya entregado). Aplicar ajustes si los pide.
-  2. **Commitear** los cambios (working tree sin commit): `backend/prisma/schema.prisma` + `frontend/src/components/Dashboard.tsx` + `docs/STATUS.md`. Mensaje sugerido: `feat(gantt): vista Cronograma (Gantt + calendario de carga) + permiso perm_gantt_view`.
-  3. **Desplegar:** en el servidor `npx prisma db push` + `npx prisma generate` + reiniciar Node (backend primero) → luego `npm run build` + republicar `dist/` del frontend.
+- **Cronograma (Gantt + Calendario)** — ✅ validado, code-review + fix, **PR #1 MERGED a `main`** (ver sección 24). ⏳ **Solo falta desplegar** (en el servidor, en orden):
+  1. Backend, en `backend/`: `git pull` → `npx prisma db push` → `npx prisma generate` → **reiniciar Node**.
+  2. Frontend, en `frontend/`: `npm run build` → republicar `dist/` en IIS.
+  3. Para habilitar la vista a un jefe/PM: Gestión de Usuarios → editar usuario → marcar "Ver Cronograma (Gantt)". (Hasta hacer el `db push`, marcar ese checkbox al guardar da error 500; los admin igual ven la vista.)
 - Edición inline de título de subtarea en la vista de lista de tareas (actualmente solo en modal de detalles).
 - Verificar comportamiento de permisos con usuarios reales no-admin en producción.
 - Resolver drift de migraciones Prisma.
