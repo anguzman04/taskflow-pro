@@ -881,6 +881,7 @@ const filteredReportTasks = tasks.filter(task => {
   const handleAddSubtask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTask || !newSubtaskTitle.trim()) return;
+    if (selectedTask.estado === 'Completado' || selectedTask.estado === 'Cancelado') return;
     try {
       const res = await fetch(`/api/tasks/${selectedTask.id}/subtasks`, {
         method: 'POST',
@@ -4102,6 +4103,12 @@ case 'responsable':
                                )}
                             </div>
                             {canCreateSubtasks() && (
+                               (selectedTask?.estado === 'Completado' || selectedTask?.estado === 'Cancelado') ? (
+                                  <div className="mt-auto pt-4 border-t border-slate-100 flex items-center gap-2 text-sm text-slate-400">
+                                     <Lock size={14} className="shrink-0" />
+                                     <span>No se pueden agregar subtareas a una tarea {selectedTask?.estado === 'Cancelado' ? 'cancelada' : 'completada'}.</span>
+                                  </div>
+                               ) : (
                                <form onSubmit={handleAddSubtask} className="mt-auto pt-4 border-t border-slate-100 flex flex-col gap-2">
                                   <input type="text" value={newSubtaskTitle} onChange={e => setNewSubtaskTitle(e.target.value)} placeholder="Escribe una nueva subtarea..." className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-400" required />
                                   <div className="flex gap-2">
@@ -4112,6 +4119,7 @@ case 'responsable':
                                      <button type="submit" className="px-5 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 whitespace-nowrap"><Plus size={16}/> Agregar</button>
                                   </div>
                                </form>
+                               )
                             )}
                          </div>
                       )}

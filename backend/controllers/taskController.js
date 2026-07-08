@@ -670,6 +670,15 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
     try {
       const { id } = req.params;
       const { titulo, fecha_compromiso } = req.body;
+      // No se pueden agregar subtareas a una tarea ya cerrada (Completado/Cancelado).
+      const parentTask = await prisma.task.findUnique({
+        where: { id: parseInt(id) },
+        select: { estado: true }
+      });
+      if (!parentTask) return res.status(404).json({ error: "Tarea no encontrada" });
+      if (esEstadoCerrado(parentTask.estado)) {
+        return res.status(409).json({ error: "No se pueden agregar subtareas a una tarea cerrada" });
+      }
       const last = await prisma.subtask.findFirst({
         where: { task_id: parseInt(id) },
         orderBy: { orden: 'desc' }
