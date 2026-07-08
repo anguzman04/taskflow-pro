@@ -8,7 +8,7 @@ import {
   Download, Upload, FolderKanban, CheckSquare, Square, ListChecks,
   PieChart as PieChartIconLucide, TrendingUp, Activity, FilterX, Lock, Columns,
   PlayCircle, Reply, Tag, GripVertical, Trophy, Medal, Menu, ChevronLeft, ChevronRight,
-  Link2, ExternalLink, NotebookPen, GanttChartSquare
+  Link2, ExternalLink, NotebookPen, GanttChartSquare, ClipboardCheck
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
@@ -16,6 +16,7 @@ import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveCo
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import MultiSelect from './MultiSelect';
+import ChangeControlView from './ChangeControlView';
 
 // Opciones de prioridad reutilizadas por los filtros multi-selección.
 const PRIORITY_OPTIONS = [
@@ -207,7 +208,7 @@ const ChartsSection = ({ data }: { data: any[] }) => {
   );
 };
 
-type View = 'tasks' | 'users' | 'areas' | 'control' | 'projects' | 'reports' | 'gantt';
+type View = 'tasks' | 'users' | 'areas' | 'control' | 'projects' | 'reports' | 'gantt' | 'changecontrol';
 type DetailsTab = 'comments' | 'attachments' | 'subtasks';
 
 export default function App() {
@@ -362,6 +363,7 @@ export default function App() {
   const canViewProjects = currentUser?.is_admin || currentUser?.perm_projects_view;
   const canViewReports = currentUser?.is_admin || currentUser?.perm_reports_view;
   const canViewGantt = currentUser?.is_admin || (currentUser as any)?.perm_gantt_view;
+  const canViewChangeControl = currentUser?.is_admin || (currentUser as any)?.perm_change_control;
 
   // Estado local de la vista Cronograma / Gantt
   const [ganttScale, setGanttScale] = useState<'week' | 'month' | 'quarter'>('month');
@@ -1372,6 +1374,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         perm_projects_edit: formData.get('perm_projects_edit') === 'on' ? 1 : 0, perm_projects_delete: formData.get('perm_projects_delete') === 'on' ? 1 : 0,
         perm_reports_view: formData.get('perm_reports_view') === 'on' ? 1 : 0,
         perm_gantt_view: formData.get('perm_gantt_view') === 'on' ? 1 : 0,
+        perm_change_control: formData.get('perm_change_control') === 'on' ? 1 : 0,
         // FIX 2: Agregamos el nuevo permiso para edici  n en Control de Gesti  n
         perm_control_edit: formData.get('perm_control_edit') === 'on' ? 1 : 0,
 		
@@ -2953,6 +2956,7 @@ case 'responsable':
           {canViewProjects && <button onClick={() => { setCurrentView('projects'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de Proyectos" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'projects' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><FolderKanban size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de Proyectos</span></button>}
           {canViewReports && <button onClick={() => { setCurrentView('reports'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Reportes" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'reports' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><PieChartIconLucide size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Reportes</span></button>}
           {canViewGantt && <button onClick={() => { setCurrentView('gantt'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Cronograma (Gantt)" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'gantt' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><GanttChartSquare size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Cronograma</span></button>}
+          {canViewChangeControl && <button onClick={() => { setCurrentView('changecontrol'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Control de Cambios" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'changecontrol' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><ClipboardCheck size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Control de Cambios</span></button>}
           {canViewUsers && <button onClick={() => { setCurrentView('users'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de Usuarios" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'users' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de Usuarios</span></button>}
           {canViewAreas && <button onClick={() => { setCurrentView('areas'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de áreas" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de áreas</span></button>}
           {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => { setCurrentView('control'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Control de Gestión" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Control de Gestión</span></button>}
@@ -3001,6 +3005,11 @@ case 'responsable':
                     <>
                       <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 capitalize truncate">Cronograma (Gantt)</h2>
                       <p className="text-slate-500 text-xs sm:text-sm truncate">Supervisión de tareas activas por proyecto en la línea de tiempo</p>
+                    </>
+                  ) : currentView === 'changecontrol' ? (
+                    <>
+                      <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 capitalize truncate">Control de Cambios</h2>
+                      <p className="text-slate-500 text-xs sm:text-sm truncate">Formato SGSI IT-F-50 — diligenciar y descargar en Excel</p>
                     </>
                   ) : (
                     <>
@@ -3145,6 +3154,7 @@ case 'responsable':
           {currentView === 'reports' && renderReportsView()}
 
           {currentView === 'gantt' && renderGanttView()}
+          {currentView === 'changecontrol' && <ChangeControlView currentUser={currentUser} />}
 
           {currentView === 'tasks' && (
             <>
@@ -3942,6 +3952,7 @@ case 'responsable':
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Proyectos</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_view" defaultChecked={editingItem?.perm_projects_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_create" defaultChecked={editingItem?.perm_projects_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_edit" defaultChecked={editingItem?.perm_projects_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_projects_delete" defaultChecked={editingItem?.perm_projects_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Reportes</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_reports_view" defaultChecked={editingItem?.perm_reports_view} className="rounded text-indigo-600" /> Ver Reportes</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Cronograma</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_gantt_view" defaultChecked={(editingItem as any)?.perm_gantt_view} className="rounded text-indigo-600" /> Ver Cronograma (Gantt)</label></div>
+                         <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Control de Cambios</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_change_control" defaultChecked={(editingItem as any)?.perm_change_control} className="rounded text-indigo-600" /> Ver / Diligenciar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Usuarios</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_view" defaultChecked={editingItem?.perm_users_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_create" defaultChecked={editingItem?.perm_users_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_edit" defaultChecked={editingItem?.perm_users_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_users_delete" defaultChecked={editingItem?.perm_users_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                          <div className="space-y-2 p-4 border border-slate-200 rounded-xl bg-white shadow-sm"><h5 className="text-xs font-bold text-slate-500 uppercase pb-2 border-b border-slate-100">Areas</h5><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_view" defaultChecked={editingItem?.perm_areas_view} className="rounded text-blue-600" /> Ver</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_create" defaultChecked={editingItem?.perm_areas_create} className="rounded text-blue-600" /> Crear</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_edit" defaultChecked={editingItem?.perm_areas_edit} className="rounded text-blue-600" /> Editar</label><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="perm_areas_delete" defaultChecked={editingItem?.perm_areas_delete} className="rounded text-blue-600" /> Eliminar</label></div>
                       </div>

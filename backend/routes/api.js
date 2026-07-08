@@ -13,6 +13,8 @@ const commentController = require('../controllers/commentController');
 const notificationController = require('../controllers/notificationController');
 const projectController = require('../controllers/projectController');
 const noteController = require('../controllers/noteController');
+const personController = require('../controllers/personController');
+const changeControlController = require('../controllers/changeControlController');
 
 // ==========================================
 // 1. RUTAS PÚBLICAS
@@ -105,6 +107,20 @@ router.get('/notes', noteController.getMine);
 router.post('/notes', noteController.create);
 router.put('/notes/:id', noteController.update);
 router.delete('/notes/:id', noteController.delete);
+
+// Agenda de personas (módulo Control de Cambios)
+router.get('/persons', personController.getAll);
+router.post('/persons', personController.create);
+router.put('/persons/:id', personController.update);
+router.delete('/persons/:id', personController.delete);
+
+// Control de Cambios (formato SGSI IT-F-50)
+router.get('/change-controls', changeControlController.getAll);
+router.get('/change-controls/:id', changeControlController.getById);
+router.get('/change-controls/:id/download', changeControlController.download);
+router.post('/change-controls', changeControlController.create);
+router.put('/change-controls/:id', changeControlController.update);
+router.delete('/change-controls/:id', changeControlController.delete);
 
 // Historial y Evidencias
 router.get('/audit-logs/:taskId', auditLogController.getByTask);

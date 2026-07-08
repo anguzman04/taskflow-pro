@@ -59,6 +59,9 @@ model User {
   // Permiso de la vista Cronograma / Gantt (supervisión dirección + PM)
   perm_gantt_view       Boolean        @default(false)
 
+  // Permiso del módulo Control de Cambios (formulario SGSI IT-F-50)
+  perm_change_control   Boolean        @default(false)
+
   // Permisos de Proyectos
   perm_projects_view    Boolean        @default(false)
   perm_projects_create  Boolean        @default(false)
@@ -209,6 +212,71 @@ model Project {
   
   lider        User?    @relation("ProjectLeader", fields: [lider_id], references: [id])
   tasks        Task[]
+}
+
+// --- MÓDULO CONTROL DE CAMBIOS (formato SGSI IT-F-50) ---
+
+// Agenda de personas reutilizable para llenar los formularios.
+// Incluye personal interno y externo (no depende de la tabla User).
+model Person {
+  id         Int      @id @default(autoincrement())
+  nombre     String
+  rol        String?
+  telefono   String?
+  email      String?
+  activo     Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+}
+
+// Un formulario de control de cambios diligenciado. Los campos de encabezado
+// son columnas; las secciones repetibles (tablas de tamaño fijo en la plantilla)
+// se guardan como JSON. Los datos de personas se guardan como SNAPSHOT (copia),
+// para que editar la agenda no altere un documento histórico ya generado.
+model ChangeControl {
+  id                   Int      @id @default(autoincrement())
+
+  // Encabezado / caso del cambio
+  nombre_cambio        String
+  fecha_hora_inicio    String?
+  objetivo             String?
+  fecha_hora_final     String?
+  solicitado_por       String?
+  tipo_cambio          String?
+  organizacion         String?  @default("Atlantic Quantum Innovations SAS")
+  version              String?
+  descripcion          String?
+  por_que              String?
+  impacto              String?
+  activos              String?
+  principios_seguridad String?
+  trata_datos          String?
+  bd_afectadas         String?
+  resultado_previsto   String?
+  tiempo_estimado      String?
+  riesgos              String?
+  factores_adicionales String?
+  costos               String?
+  resultados           String?
+  rev_realizado_por    String?
+  rev_cargo            String?
+  rev_aprobador        String?
+
+  // Secciones repetibles (arreglos de objetos, tamaño fijo por plantilla)
+  partes               Json?   // [{ beneficios, efectos }]  (Partes interesadas)
+  personal             Json?   // [{ beneficios, efectos }]  (Tecnología/Estructura/Otro)
+  implementadores      Json?   // [{ nombre, rol, telefono, email }]
+  soporte              Json?   // [{ nombre, rol, telefono, email }]
+  antes                Json?   // [{ id, descripcion, responsable, fecha, horaInicio, horaFin }]
+  durante              Json?   // idem
+  rollback             Json?   // idem
+
+  // Metadatos
+  estado               String   @default("Borrador")
+  created_by_id        Int?
+  created_by_nombre    String?
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
 }
 
 // Agrega este NUEVO MODELO al final de tu archivo schema.prisma
