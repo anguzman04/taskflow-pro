@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-07-03_
+_Última actualización: 2026-07-08_
 
 ---
 
@@ -441,6 +441,26 @@ Se detectó que **no se estaba capturando cuándo se cerraban las tareas**: de 1
 - Las **111 tareas ya cerradas** quedan con la columna vacía (no hay dato histórico; el `AuditLog` tampoco lo tenía). Se llena de aquí en adelante.
 - Verificado: frontend compila, `node --check` OK, la API ya expone `fecha_ejecucion` en las 206 tareas. No se hizo prueba de escritura en vivo para no mutar la BD de producción (misma BD del entorno de pruebas).
 - Pendiente de despliegue en el servidor IIS: `git pull` + reiniciar Node (backend) + `npm run build` + republicar `dist/` (frontend). No requiere `db push` (la columna `fecha_ejecucion` ya existía en el esquema).
+
+---
+
+## Completado en sesión 2026-07-08
+
+### 26. Bloquear creación de subtareas en tareas cerradas
+
+Se detectó que, tras pasar una tarea a **Completado/Cancelado**, la UI seguía permitiendo agregar más subtareas. Se blindó en dos capas:
+
+**Backend (`taskController.js` → `addSubtask`):**
+- Antes de crear la subtarea consulta el `estado` de la tarea padre. Si no existe → **404**; si está cerrada (`esEstadoCerrado`: Completado/Finalizado/Cancelado) → **409** `"No se pueden agregar subtareas a una tarea cerrada"`. Reutiliza el helper `esEstadoCerrado` ya existente.
+
+**Frontend (`Dashboard.tsx` → pestaña Subtareas del modal de detalles):**
+- El formulario "Agregar subtarea" ya **no se renderiza** si `selectedTask.estado` es `Completado`/`Cancelado`; en su lugar aparece un aviso con candado (_"No se pueden agregar subtareas a una tarea completada/cancelada"_).
+- Guarda adicional en `handleAddSubtask` (return temprano). El gating por permiso `perm_subtasks_create` se mantiene intacto; solo se sumó el bloqueo por estado.
+
+**Verificación:** `node --check` backend OK, `vite build` verde, **validado en local por el usuario (funciona)**. No se probó escritura en vivo para no mutar la BD de producción (misma BD del entorno de pruebas).
+
+- **Commit:** `20b585f` en `main`. Sin push aún.
+- **Despliegue:** va junto con el resto de lo pendiente en el servidor IIS (`git pull` → reiniciar Node backend → `npm run build` + republicar `dist/`). **No requiere `db push`.**
 
 ---
 
