@@ -56,6 +56,16 @@ const Field = ({ label, children }: any) => (
   <div><label className={lbl}>{label}</label>{children}</div>
 );
 
+// Definido a nivel de módulo (NO dentro del componente): si estuviera dentro,
+// se recrearía en cada render y React remontaría sus inputs, botando el foco
+// en cada tecla.
+const Section = ({ title, children }: any) => (
+  <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+    <div className="px-5 py-3 bg-slate-800 text-white text-sm font-bold uppercase tracking-wide">{title}</div>
+    <div className="p-5 space-y-4">{children}</div>
+  </div>
+);
+
 export default function ChangeControlView({ currentUser }: any) {
   const [mode, setMode] = useState<'list' | 'form'>('list');
   const [list, setList] = useState<any[]>([]);
@@ -218,13 +228,6 @@ export default function ChangeControlView({ currentUser }: any) {
       <option value="">＋ Desde agenda…</option>
       {persons.map((p) => <option key={p.id} value={p.id}>{p.nombre}{p.rol ? ` — ${p.rol}` : ''}</option>)}
     </select>
-  );
-
-  const Section = ({ title, children }: any) => (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <div className="px-5 py-3 bg-slate-800 text-white text-sm font-bold uppercase tracking-wide">{title}</div>
-      <div className="p-5 space-y-4">{children}</div>
-    </div>
   );
 
   return (
