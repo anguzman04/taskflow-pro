@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import api from '../api';
 import { saveAs } from 'file-saver';
 import {
   Plus, Trash2, Download, Edit2, X, Save, ArrowLeft, Users, Search,
@@ -13,6 +12,22 @@ const SI_NO = ['Sí', 'No'];
 // Capacidades fijas de la plantilla (no se pueden exceder para mantener el Excel idéntico)
 const CAP = { partes: 4, implementadores: 5, soporte: 5, antes: 5, durante: 6, rollback: 5 };
 const PERSONAL_LABELS = ['Tecnología', 'Estructura', 'Otro'];
+
+// --- Cliente HTTP: rutas relativas /api (window.fetch está parcheado en Dashboard
+// para inyectar el token y el Content-Type). Así funciona igual en dev y en producción. ---
+const jget = async (url: string) => { const r = await fetch(url); if (!r.ok) throw new Error(await r.text()); return r.json(); };
+const jsend = async (url: string, method: string, body: any) => {
+  const r = await fetch(url, { method, body: JSON.stringify(body) });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json().catch(() => ({}));
+};
+
+// --- Conversión de fechas entre el formato de la plantilla (dd/mm/aaaa) y los
+// inputs nativos (ISO aaaa-mm-dd). Las horas usan HH:mm en ambos lados. ---
+const isoToDmy = (iso: string) => { if (!iso) return ''; const [y, m, d] = iso.split('-'); return (d && m && y) ? `${d}/${m}/${y}` : ''; };
+const dmyToIso = (dmy: string) => { const m = String(dmy || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : ''; };
+const dtLocalToDisplay = (v: string) => { if (!v) return ''; const [date, time] = v.split('T'); const [y, m, d] = date.split('-'); const dmy = `${d}/${m}/${y}`; return time ? `${dmy} - ${time}` : dmy; };
+const displayToDtLocal = (s: string) => { const m = String(s || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\D+(\d{1,2}:\d{2}))?/); if (!m) return ''; const dt = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`; return m[4] ? `${dt}T${m[4]}` : dt; };
 
 const emptyActivity = () => ({ descripcion: '', responsable: '', fecha: '', horaInicio: '', horaFin: '' });
 const emptyPerson = () => ({ nombre: '', rol: '', telefono: '', email: '' });
@@ -33,7 +48,7 @@ const emptyForm = () => ({
   estado: 'Borrador',
 });
 
-// --- Inputs reutilizables ---
+// --- Estilos reutilizables ---
 const lbl = 'block text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1';
 const inp = 'w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-indigo-400 focus:bg-white transition-colors';
 
@@ -54,12 +69,12 @@ export default function ChangeControlView({ currentUser }: any) {
 
   const fetchList = async () => {
     setLoading(true);
-    try { const res = await api.get('/change-controls'); setList(res.data || []); }
+    try { setList(await jget('/api/change-controls')); }
     catch (e) { console.error('Error al listar controles de cambio', e); }
     finally { setLoading(false); }
   };
   const fetchPersons = async () => {
-    try { const res = await api.get('/persons'); setPersons(res.data || []); }
+    try { setPersons(await jget('/api/persons')); }
     catch (e) { console.error('Error al cargar la agenda', e); }
   };
 
@@ -76,16 +91,13 @@ export default function ChangeControlView({ currentUser }: any) {
   const openNew = () => { setEditingId(null); setForm(emptyForm()); setMode('form'); };
   const openEdit = async (id: number) => {
     try {
-      const res = await api.get(`/change-controls/${id}`);
-      const d = res.data;
-      // Normaliza: asegura arrays y los 3 renglones fijos de "personal"
+      const d = await jget(`/api/change-controls/${id}`);
       const base = emptyForm();
-      const merged = { ...base, ...d };
+      const merged: any = { ...base, ...d };
       ['partes', 'implementadores', 'soporte', 'antes', 'durante', 'rollback'].forEach((s) => {
-        if (!Array.isArray(merged[s]) || merged[s].length === 0) merged[s] = base[s];
+        if (!Array.isArray(merged[s]) || merged[s].length === 0) merged[s] = base[s as keyof typeof base];
       });
-      if (!Array.isArray(merged.personal) || merged.personal.length !== 3)
-        merged.personal = base.personal;
+      if (!Array.isArray(merged.personal) || merged.personal.length !== 3) merged.personal = base.personal;
       setForm(merged); setEditingId(id); setMode('form');
     } catch (e) { console.error('Error al abrir el control de cambio', e); alert('No se pudo abrir el registro.'); }
   };
@@ -94,8 +106,8 @@ export default function ChangeControlView({ currentUser }: any) {
     if (!form.nombre_cambio?.trim()) { alert('El nombre del cambio es obligatorio.'); return; }
     setSaving(true);
     try {
-      if (editingId) await api.put(`/change-controls/${editingId}`, form);
-      else await api.post('/change-controls', form);
+      if (editingId) await jsend(`/api/change-controls/${editingId}`, 'PUT', form);
+      else await jsend('/api/change-controls', 'POST', form);
       await fetchList();
       setMode('list');
     } catch (e) { console.error('Error al guardar', e); alert('No se pudo guardar el control de cambios.'); }
@@ -104,15 +116,16 @@ export default function ChangeControlView({ currentUser }: any) {
 
   const handleDelete = async (id: number, nombre: string) => {
     if (!window.confirm(`¿Eliminar el control de cambios "${nombre}"?`)) return;
-    try { await api.delete(`/change-controls/${id}`); fetchList(); }
+    try { await jsend(`/api/change-controls/${id}`, 'DELETE', {}); fetchList(); }
     catch (e) { console.error('Error al eliminar', e); alert('No se pudo eliminar.'); }
   };
 
   const handleDownload = async (item: any) => {
     try {
-      const res = await api.get(`/change-controls/${item.id}/download`, { responseType: 'blob' });
+      const res = await fetch(`/api/change-controls/${item.id}/download`);
+      if (!res.ok) throw new Error(await res.text());
       const safe = (item.nombre_cambio || 'control-de-cambios').replace(/[\\/:*?"<>|]/g, '').slice(0, 80);
-      saveAs(new Blob([res.data]), `IT-F-50-V1 Control de cambios - ${safe}.xlsx`);
+      saveAs(await res.blob(), `IT-F-50-V1 Control de cambios - ${safe}.xlsx`);
     } catch (e) { console.error('Error al descargar', e); alert('No se pudo generar el Excel.'); }
   };
 
@@ -141,7 +154,7 @@ export default function ChangeControlView({ currentUser }: any) {
               className="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-400" />
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => { setShowAgenda(true); }} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all">
+            <button onClick={() => setShowAgenda(true)} className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all">
               <Users size={16} /> Agenda de personas
             </button>
             <button onClick={openNew} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-sm">
@@ -233,8 +246,8 @@ export default function ChangeControlView({ currentUser }: any) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Nombre del cambio *"><input className={inp} value={form.nombre_cambio} onChange={(e) => setF('nombre_cambio', e.target.value)} /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Fecha y hora inicio"><input className={inp} value={form.fecha_hora_inicio} onChange={(e) => setF('fecha_hora_inicio', e.target.value)} placeholder="dd/mm/aaaa - hh:mm" /></Field>
-            <Field label="Fecha y hora final"><input className={inp} value={form.fecha_hora_final} onChange={(e) => setF('fecha_hora_final', e.target.value)} placeholder="dd/mm/aaaa - hh:mm" /></Field>
+            <Field label="Fecha y hora inicio"><input type="datetime-local" className={inp} value={displayToDtLocal(form.fecha_hora_inicio)} onChange={(e) => setF('fecha_hora_inicio', dtLocalToDisplay(e.target.value))} /></Field>
+            <Field label="Fecha y hora final"><input type="datetime-local" className={inp} value={displayToDtLocal(form.fecha_hora_final)} onChange={(e) => setF('fecha_hora_final', dtLocalToDisplay(e.target.value))} /></Field>
           </div>
           <Field label="Objetivo"><input className={inp} value={form.objetivo} onChange={(e) => setF('objetivo', e.target.value)} /></Field>
           <Field label="Cambio solicitado por"><input className={inp} value={form.solicitado_por} onChange={(e) => setF('solicitado_por', e.target.value)} /></Field>
@@ -370,13 +383,13 @@ function ActivitySection({ title, section, form, setRow, addRow, removeRow, cap,
       <div className="p-5 space-y-3">
         <datalist id="cc-personas">{persons.map((p: any) => <option key={p.id} value={p.nombre} />)}</datalist>
         {rows.map((a: any, i: number) => (
-          <div key={i} className="grid grid-cols-1 md:grid-cols-[28px_2fr_1.2fr_1fr_0.8fr_0.8fr_auto] gap-2 items-center">
+          <div key={i} className="grid grid-cols-1 md:grid-cols-[28px_2fr_1.2fr_1.1fr_0.9fr_0.9fr_auto] gap-2 items-center">
             <div className="text-xs font-bold text-slate-400 text-center">{i + 1}</div>
             <input className={inp} placeholder="Descripción de la actividad" value={a.descripcion || ''} onChange={(e) => setRow(section, i, 'descripcion', e.target.value)} />
             <input className={inp} list="cc-personas" placeholder="Responsable" value={a.responsable || ''} onChange={(e) => setRow(section, i, 'responsable', e.target.value)} />
-            <input className={inp} placeholder="Fecha" value={a.fecha || ''} onChange={(e) => setRow(section, i, 'fecha', e.target.value)} />
-            <input className={inp} placeholder="H. inicio" value={a.horaInicio || ''} onChange={(e) => setRow(section, i, 'horaInicio', e.target.value)} />
-            <input className={inp} placeholder="H. fin" value={a.horaFin || ''} onChange={(e) => setRow(section, i, 'horaFin', e.target.value)} />
+            <input type="date" className={inp} title="Fecha" value={dmyToIso(a.fecha)} onChange={(e) => setRow(section, i, 'fecha', isoToDmy(e.target.value))} />
+            <input type="time" className={inp} title="Hora de inicio" value={a.horaInicio || ''} onChange={(e) => setRow(section, i, 'horaInicio', e.target.value)} />
+            <input type="time" className={inp} title="Hora de fin" value={a.horaFin || ''} onChange={(e) => setRow(section, i, 'horaFin', e.target.value)} />
             <button onClick={() => removeRow(section, i)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={16} /></button>
           </div>
         ))}
@@ -398,8 +411,8 @@ function AgendaModal({ persons, onClose, onChanged }: any) {
     if (!nuevo.nombre?.trim()) { alert('El nombre es obligatorio.'); return; }
     setBusy(true);
     try {
-      if (editId) await api.put(`/persons/${editId}`, nuevo);
-      else await api.post('/persons', nuevo);
+      if (editId) await jsend(`/api/persons/${editId}`, 'PUT', nuevo);
+      else await jsend('/api/persons', 'POST', nuevo);
       setNuevo(emptyPerson()); setEditId(null); await onChanged();
     } catch (e) { console.error(e); alert('No se pudo guardar la persona.'); }
     finally { setBusy(false); }
@@ -407,7 +420,7 @@ function AgendaModal({ persons, onClose, onChanged }: any) {
   const edit = (p: any) => { setEditId(p.id); setNuevo({ nombre: p.nombre || '', rol: p.rol || '', telefono: p.telefono || '', email: p.email || '' }); };
   const del = async (id: number) => {
     if (!window.confirm('¿Quitar esta persona de la agenda?')) return;
-    try { await api.delete(`/persons/${id}`); await onChanged(); } catch (e) { console.error(e); }
+    try { await jsend(`/api/persons/${id}`, 'DELETE', {}); await onChanged(); } catch (e) { console.error(e); }
   };
 
   return (
