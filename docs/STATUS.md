@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-07-08_
+_Última actualización: 2026-07-09_
 
 ---
 
@@ -8,7 +8,9 @@ _Última actualización: 2026-07-08_
 El proyecto está activo y en desarrollo continuo. Frontend operativo.
 **SSO con Microsoft Entra ID: ✅ FUNCIONANDO end-to-end** (flujo `loginRedirect`; validado Microsoft → token → BD → dashboard). Debug temporal removido y **commiteado**. Ver sección 17.
 **BD: ✅ RESUELTO** — era el `DATABASE_URL` con la contraseña sin URL-encodear. Ver sección 18.
-**`JWT_SECRET`: ✅ ROTADO** (sesión 2026-06-24) — secreto nuevo + fallback hardcodeado eliminado + guard de arranque. Ver sección 22. ⚠️ Falta aplicar el secreto nuevo en la env var del SO de producción y reiniciar Node.
+**`JWT_SECRET`: ✅ ROTADO Y APLICADO EN PRODUCCIÓN** (2026-07-09) — secreto nuevo + fallback hardcodeado eliminado + guard de arranque + variable de entorno del SO creada en el servidor. Ver secciones 22 y 28.
+**Despliegue: ✅ AHORA POR GIT** (2026-07-09) — Git instalado en el server, `node_modules` fuera del repo; desplegar = `git pull` + build + reiniciar Node (ya no se copian carpetas). Ver sección 28.
+**Módulo Control de Cambios (SGSI IT-F-50): ✅ EN PRODUCCIÓN** (2026-07-09) — diligenciar en pantalla → BD → Excel idéntico. Ver sección 27.
 
 ---
 
@@ -459,8 +461,41 @@ Se detectó que, tras pasar una tarea a **Completado/Cancelado**, la UI seguía 
 
 **Verificación:** `node --check` backend OK, `vite build` verde, **validado en local por el usuario (funciona)**. No se probó escritura en vivo para no mutar la BD de producción (misma BD del entorno de pruebas).
 
-- **Commit:** `20b585f` en `main`. Sin push aún.
-- **Despliegue:** va junto con el resto de lo pendiente en el servidor IIS (`git pull` → reiniciar Node backend → `npm run build` + republicar `dist/`). **No requiere `db push`.**
+- **Commit:** `20b585f` en `main`. ✅ Desplegado en producción (2026-07-09).
+
+---
+
+## Completado en sesión 2026-07-09
+
+### 27. Módulo nuevo: Control de Cambios (formato SGSI IT-F-50) — DESPLEGADO EN PRODUCCIÓN
+
+Se sistematizó el formato **IT-F-50-V1 de Control de Cambios**: el usuario lo **diligencia en pantalla**, se **guarda en BD** y se **descarga como Excel idéntico a la plantilla** (con logo, bordes y celdas combinadas).
+
+**Enfoque:** se abre la plantilla real (`backend/templates/IT-F-50-V1.xlsx`) con ExcelJS y se **inyectan los valores** en las celdas mapeadas → fidelidad total. El logo original era "imagen en celda" (richData, que ExcelJS descarta); se re-ancla como imagen flotante sobre B1:B2 desde el PNG del media. Solo se conserva la hoja "Proceso de cambio".
+
+**Backend:**
+- Prisma: modelos `ChangeControl` (campos de cabecera + secciones repetibles en JSON) y `Person` (agenda reutilizable, con snapshot en cada documento) + permiso `perm_change_control` en `User`. Aplicado con `db push` (aditivo).
+- `services/changeControlTemplate.js` (genera el buffer xlsx), `controllers/changeControlController.js` (CRUD + `download`), `controllers/personController.js` (CRUD agenda). Rutas `/api/change-controls` y `/api/persons`. Dependencia nueva: **`exceljs`** en el backend. Acceso gateado por `is_admin || perm_change_control`.
+
+**Frontend:**
+- Componente nuevo `frontend/src/components/ChangeControlView.tsx` (lista + formulario + descarga + agenda de personas). Selectores nativos de **calendario/hora**. Integrado en `Dashboard.tsx` (vista, permiso `canViewChangeControl`, botón de sidebar, checkbox de permiso en el formulario de usuario).
+- Capacidades fijas por plantilla (partes 4, implementadores/soporte 5, antes 5, durante 6, rollback 5; impacto personal 3 filas: Tecnología/Estructura/Otro). Control de revisión = 3 campos (Realizado por/Cargo/Aprobador); Resultados = 1 cuadro de texto.
+
+**Fixes durante el despliegue:**
+- ChangeControlView usaba el cliente axios `api` (URL fija `localhost:3000`) → rompía en producción (`ERR_CONNECTION_REFUSED`). Se cambió a `fetch('/api/...')` relativo (Dashboard parchea `window.fetch` para inyectar token + Content-Type). 
+- Bug de foco: `Section` estaba definido dentro del componente → React remontaba los inputs en cada tecla. Se movió a nivel de módulo.
+
+- **Commits:** `c7d38f7`, `834ec3f`, `0d0a316` en `main`. ✅ **Probado y funcionando en producción.**
+
+### 28. Despliegue por Git (ya no copiando carpetas) + `node_modules` fuera del repo
+
+Se modernizó el despliegue en producción: antes se **copiaban** las carpetas `backend`/`frontend` completas (lento y propenso a drift); ahora es por **`git pull`**.
+
+- Se **instaló Git** en el servidor de producción y se conectó la carpeta del sitio al repo (`origin` = github.com/anguzman04/taskflow-pro).
+- Se **dejó de versionar `backend/node_modules`** (6273 archivos; commit `226a6a0`) → repo liviano, `git pull` rápido y sin conflictos. `backend/.gitignore` ya lo ignoraba; las dependencias se restauran con `npm install`.
+- El árbol drifteado del server se sincronizó con `git reset --hard origin/main` (respaldando `node_modules` primero) + `npm install` + `prisma generate` + `npm run build`. `.env` y `backend/uploads` se conservan (no versionados).
+- **Flujo de despliegue nuevo:** `git pull` → (`npm run build` si cambió el front, como Admin) → (`npm install` si cambió package.json) → (`npx prisma generate` si cambió el schema) → **reiniciar la terminal del backend**.
+- También se creó `JWT_SECRET` como variable de entorno del SO en producción (faltaba; el código nuevo aborta sin ella). Ver notas de despliegue.
 
 ---
 
@@ -472,13 +507,12 @@ Se detectó que, tras pasar una tarea a **Completado/Cancelado**, la UI seguía 
 
 ## Próximos pasos sugeridos
 
-- ✅ **HECHO (sesión 2026-06-24):** `JWT_SECRET` rotado y fallback hardcodeado eliminado (ver sección 22). ⚠️ Falta aplicar el secreto nuevo en la variable de entorno del SO en **producción** y reiniciar Node.
+- ✅ **HECHO (2026-07-09):** `JWT_SECRET` creado como variable de entorno del SO en **producción** (faltaba; el guard sin fallback abortaba el arranque). Node reiniciado.
+- ✅ **HECHO (2026-07-09):** `backend/node_modules` **destrackeado** (commit `226a6a0`) — ya no genera ruido en `git status` (ver sección 28).
+- ✅ **HECHO (2026-07-09):** despliegue migrado a **Git pull** (ya no se copian carpetas); Git instalado en el server (ver sección 28).
+- ✅ **HECHO (2026-07-09):** **Cronograma (Gantt + Calendario)** desplegado en prod junto con el resto del código vía `git pull`. Para habilitar a un jefe/PM: Gestión de Usuarios → editar → marcar "Ver Cronograma (Gantt)".
 - ⚠️ **Seguridad (de sesión 2026-06-16):** rotar la contraseña de PostgreSQL expuesta en el historial de git (cuando se rote, re-encodear el `DATABASE_URL`).
-- **node_modules trackeado:** `backend/node_modules` está versionado y genera ruido en cada `git status`. Conviene `git rm -r --cached backend/node_modules` y añadirlo al `.gitignore`.
-- **Cronograma (Gantt + Calendario)** — ✅ validado, code-review + fix, **PR #1 MERGED a `main`**, ✅ **probado en la app con datos reales** (ver sección 24). La columna `perm_gantt_view` **ya está en la BD de producción** (el `db push` se corrió contra la BD compartida). ⏳ **Falta solo desplegar los procesos del servidor IIS de prod:**
-  1. `git pull` → `npx prisma generate` → **reiniciar Node** (backend).
-  2. `npm run build` → republicar `dist/` (frontend).
-  3. Habilitar a jefes/PM: Gestión de Usuarios → editar usuario → marcar "Ver Cronograma (Gantt)".
 - Edición inline de título de subtarea en la vista de lista de tareas (actualmente solo en modal de detalles).
 - Verificar comportamiento de permisos con usuarios reales no-admin en producción.
 - Resolver drift de migraciones Prisma.
+- Módulo Control de Cambios: mejoras futuras posibles — estados/flujo de aprobación, adjuntar diagrama, filtros en la lista.
