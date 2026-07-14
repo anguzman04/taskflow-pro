@@ -275,7 +275,7 @@ quickUpdate: async (req, res) => {
       
       // Si el usuario cambia el porcentaje manualmente:
       if (dataToUpdate.porcentaje_avance !== undefined) {
-        if (dataToUpdate.porcentaje_avance === 100) {
+        if (dataToUpdate.porcentaje_avance === 100 && dataToUpdate.estado !== 'Cancelado') {
           dataToUpdate.estado = 'Completado';
         } else if (dataToUpdate.porcentaje_avance > 0 && (oldTask.estado === 'Pendiente' || oldTask.estado === 'Planeado')) {
           dataToUpdate.estado = 'En curso';
@@ -445,7 +445,12 @@ createBulk: async (req, res) => {
       let estadoFinal = data.estado || oldTask.estado;
       let avanceFinal = parseInt(data.porcentaje_avance) || 0;
 
-      if (avanceFinal === 100) {
+      // Una cancelación explícita SIEMPRE manda: aunque el avance sea 100, no se
+      // debe forzar 'Completado' (antes esto convertía un "Cancelado" con 100%
+      // en "Completado" y disparaba el correo de tarea completada).
+      if (estadoFinal === 'Cancelado') {
+        // se respeta el estado cancelado; el avance queda como venga
+      } else if (avanceFinal === 100) {
         estadoFinal = 'Completado';
       } else if (estadoFinal === 'Completado') {
         avanceFinal = 100;
