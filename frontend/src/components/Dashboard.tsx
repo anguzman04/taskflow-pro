@@ -256,10 +256,10 @@ const ChartsSection = ({ data }: { data: any[] }) => {
         <div className="h-52">
           {priorityStats.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={priorityStats} margin={{ top: 20, right: 10, left: -18, bottom: 0 }}>
+              <BarChart data={priorityStats} margin={{ top: 20, right: 12, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} dy={8} />
-                <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} unit="%" width={40} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} unit="%" width={44} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
                 <Tooltip cursor={{ fill: '#f8fafc' }} content={<PrioridadBarTooltip />} />
                 <Bar dataKey="Avance" radius={[6, 6, 0, 0]} maxBarSize={48}>
                   {priorityStats.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
