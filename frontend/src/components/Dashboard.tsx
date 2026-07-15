@@ -181,7 +181,22 @@ const PrioridadBarTooltip = ({ active, payload }: any) => {
   );
 };
 
-const ChartsSection = ({ data }: { data: any[] }) => {
+// Tooltip de las barras de atrasadas por área
+const AtrasadasBarTooltip = ({ active, payload }: any) => {
+  if (!active || !payload?.length) return null;
+  const p = payload[0].payload;
+  return (
+    <div className="bg-white/95 backdrop-blur px-3 py-2 rounded-lg shadow-lg border border-slate-100 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="w-2.5 h-2.5 rounded-full" style={{ background: '#ef4444' }} />
+        <span className="font-bold text-slate-700">{p.name}</span>
+      </div>
+      <div className="mt-1 text-slate-500"><span className="font-semibold text-red-600">{p.atrasadas}</span> tarea{p.atrasadas !== 1 ? 's' : ''} atrasada{p.atrasadas !== 1 ? 's' : ''}</div>
+    </div>
+  );
+};
+
+const ChartsSection = ({ data, areas = [] }: { data: any[]; areas?: any[] }) => {
   const pieData = [
     { name: 'Planeado', value: data.filter(t => t.estado === 'Planeado').length, color: '#94a3b8' },
     { name: 'En curso', value: data.filter(t => t.estado === 'En curso').length, color: '#3b82f6' },
@@ -201,8 +216,20 @@ const ChartsSection = ({ data }: { data: any[] }) => {
   const totalPrioridad = priorityStats.reduce((s, d) => s + d.count, 0);
   const avanceGlobal = totalPrioridad ? Math.round(priorityStats.reduce((s, d) => s + d.Avance * d.count, 0) / totalPrioridad) : 0;
 
+  // Tareas atrasadas agrupadas por área (incluye "Sin área"), ordenadas desc.
+  const overduePorArea = [
+    ...areas.map((a: any) => ({
+      name: a.nombre,
+      atrasadas: data.filter(t => t.area_origen_id === a.id && getDaysOverdue(t.fecha_fin, t.estado) > 0).length,
+    })),
+    { name: 'Sin área', atrasadas: data.filter(t => !t.area_origen_id && getDaysOverdue(t.fecha_fin, t.estado) > 0).length },
+  ].filter(x => x.atrasadas > 0).sort((a, b) => b.atrasadas - a.atrasadas);
+  const totalAtrasadas = overduePorArea.reduce((s, d) => s + d.atrasadas, 0);
+  const overdueChartHeight = Math.min(Math.max(overduePorArea.length * 40 + 16, 120), 340);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+    <div className="space-y-4 mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {/* Distribución por Estado — dona con total al centro + leyenda */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
@@ -269,6 +296,40 @@ const ChartsSection = ({ data }: { data: any[] }) => {
             </ResponsiveContainer>
           ) : <div className="h-full flex items-center justify-center"><span className="text-slate-400 text-sm">No hay datos para graficar</span></div>}
         </div>
+      </div>
+      </div>
+
+      {/* Tareas Atrasadas por Área — barras horizontales */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertCircle size={16} className="text-red-400"/>
+            <span className="text-sm font-bold text-slate-900 truncate">Tareas Atrasadas por Área</span>
+          </div>
+          {totalAtrasadas > 0 && (
+            <span className="text-xs text-slate-400 whitespace-nowrap">Total <span className="font-bold text-red-600 tabular-nums">{totalAtrasadas}</span></span>
+          )}
+        </div>
+        {overduePorArea.length > 0 ? (
+          <div style={{ height: overdueChartHeight }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={overduePorArea} layout="vertical" margin={{ top: 0, right: 28, left: 8, bottom: 0 }} barCategoryGap={10}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                <XAxis type="number" allowDecimals={false} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <YAxis type="category" dataKey="name" width={130} axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#475569' }} />
+                <Tooltip cursor={{ fill: '#fef2f2' }} content={<AtrasadasBarTooltip />} />
+                <Bar dataKey="atrasadas" fill="#ef4444" radius={[0, 6, 6, 0]} maxBarSize={26}>
+                  <LabelList dataKey="atrasadas" position="right" style={{ fontSize: 11, fontWeight: 700, fill: '#b91c1c' }} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-24 flex flex-col items-center justify-center text-center">
+            <CheckCircle2 size={24} className="text-emerald-400 mb-1" />
+            <span className="text-slate-500 text-sm font-medium">Sin tareas atrasadas 🎉</span>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -3279,7 +3340,7 @@ case 'responsable':
                 </div>
               </div>
 
-              <ChartsSection data={filteredTasks} />
+              <ChartsSection data={filteredTasks} areas={areas} />
 
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                 
@@ -3676,7 +3737,7 @@ case 'responsable':
 			  
 			  
 			  
-              <ChartsSection data={filteredControlTasks} />
+              <ChartsSection data={filteredControlTasks} areas={areas} />
               
               <div className="flex justify-end mb-4 relative z-20">
                 <button onClick={(e) => { e.stopPropagation(); setShowColumnManager(!showColumnManager); }} className="px-4 py-2 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-600 flex items-center gap-2 text-xs font-bold shadow-sm active:scale-95">
