@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, LabelList } from 'recharts';
 import ExcelJS from 'exceljs';
 import { saveAs } from 'file-saver';
 import MultiSelect from './MultiSelect';
@@ -149,55 +149,121 @@ const getDaysOverdue = (endDateStr: string, status: string) => {
 
 
 
+// Tooltip de la dona de estados (color + estado + conteo + %)
+const EstadoPieTooltip = ({ active, payload, total }: any) => {
+  if (!active || !payload?.length) return null;
+  const p = payload[0].payload;
+  const pct = total ? Math.round((p.value / total) * 100) : 0;
+  return (
+    <div className="bg-white/95 backdrop-blur px-3 py-2 rounded-lg shadow-lg border border-slate-100 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.color }} />
+        <span className="font-bold text-slate-700">{p.name}</span>
+      </div>
+      <div className="mt-1 text-slate-500">{p.value} tarea{p.value !== 1 ? 's' : ''} · <span className="font-semibold text-slate-700">{pct}%</span></div>
+    </div>
+  );
+};
+
+// Tooltip de las barras de prioridad (avance promedio + nº de tareas)
+const PrioridadBarTooltip = ({ active, payload }: any) => {
+  if (!active || !payload?.length) return null;
+  const p = payload[0].payload;
+  return (
+    <div className="bg-white/95 backdrop-blur px-3 py-2 rounded-lg shadow-lg border border-slate-100 text-xs">
+      <div className="flex items-center gap-2">
+        <span className="w-2.5 h-2.5 rounded-full" style={{ background: p.fill }} />
+        <span className="font-bold text-slate-700">Prioridad {p.name}</span>
+      </div>
+      <div className="mt-1 text-slate-500">Avance promedio: <span className="font-semibold text-slate-700">{p.Avance}%</span></div>
+      <div className="text-slate-500">{p.count} tarea{p.count !== 1 ? 's' : ''}</div>
+    </div>
+  );
+};
+
 const ChartsSection = ({ data }: { data: any[] }) => {
   const pieData = [
     { name: 'Planeado', value: data.filter(t => t.estado === 'Planeado').length, color: '#94a3b8' },
     { name: 'En curso', value: data.filter(t => t.estado === 'En curso').length, color: '#3b82f6' },
     { name: 'En espera', value: data.filter(t => t.estado === 'En espera').length, color: '#f59e0b' },
-    { name: 'Completado', value: data.filter(t => t.estado === 'Completado').length, color: '#10b981' }
+    { name: 'Completado', value: data.filter(t => t.estado === 'Completado').length, color: '#10b981' },
+    { name: 'Cancelado', value: data.filter(t => t.estado === 'Cancelado').length, color: '#ef4444' }
   ].filter(d => d.value > 0);
+  const totalPie = pieData.reduce((s, d) => s + d.value, 0);
 
   const priorityStats = ['0|Muy Alta', '1|Alta', '2|Media', '3|Baja', '4|Muy Baja'].map(p => {
-    const targetLabel = getPriorityLabel(p); 
+    const targetLabel = getPriorityLabel(p);
     const t = data.filter(task => getPriorityLabel(task.prioridad) === targetLabel);
     const avg = t.length > 0 ? t.reduce((acc, curr) => acc + (Number(curr.porcentaje_avance) || 0), 0) / t.length : 0;
     return { name: targetLabel, Avance: Math.round(avg), count: t.length, fill: getChartColor(p) };
-  }).filter(stat => stat.count > 0); 
+  }).filter(stat => stat.count > 0);
+
+  const totalPrioridad = priorityStats.reduce((s, d) => s + d.count, 0);
+  const avanceGlobal = totalPrioridad ? Math.round(priorityStats.reduce((s, d) => s + d.Avance * d.count, 0) / totalPrioridad) : 0;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      {/* Distribución por Estado — dona con total al centro + leyenda */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-2 mb-6">
+        <div className="flex items-center gap-2 mb-4">
           <PieChartIcon size={16} className="text-slate-400"/>
           <span className="text-sm font-bold text-slate-900">Distribución por Estado</span>
         </div>
-        <div className="h-64 flex items-center justify-center">
-          {pieData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={pieData} innerRadius={70} outerRadius={90} paddingAngle={5} dataKey="value">
-                  {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : <span className="text-slate-400 text-sm">No hay datos para graficar</span>}
-        </div>
+        {pieData.length > 0 ? (
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <div className="relative w-full sm:w-[46%] h-52 shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={pieData} innerRadius={62} outerRadius={86} paddingAngle={3} dataKey="value" stroke="none">
+                    {pieData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
+                  </Pie>
+                  <Tooltip content={<EstadoPieTooltip total={totalPie} />} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-3xl font-black text-slate-900 leading-none">{totalPie}</span>
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mt-1">Tareas</span>
+              </div>
+            </div>
+            <div className="w-full sm:flex-1 space-y-2">
+              {pieData.map((e) => {
+                const pct = totalPie ? Math.round((e.value / totalPie) * 100) : 0;
+                return (
+                  <div key={e.name} className="flex items-center gap-2 text-sm">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: e.color }} />
+                    <span className="text-slate-600 flex-1 truncate">{e.name}</span>
+                    <span className="font-bold text-slate-800 tabular-nums">{e.value}</span>
+                    <span className="text-slate-400 text-xs w-9 text-right tabular-nums">{pct}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : <div className="h-52 flex items-center justify-center"><span className="text-slate-400 text-sm">No hay datos para graficar</span></div>}
       </div>
+
+      {/* Avance Promedio según Prioridad — barras con cuadrícula, valores y avance global */}
       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-2 mb-6">
-          <BarChart3 size={16} className="text-slate-400"/>
-          <span className="text-sm font-bold text-slate-900">Avance Promedio según Prioridad</span>
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <BarChart3 size={16} className="text-slate-400"/>
+            <span className="text-sm font-bold text-slate-900 truncate">Avance Promedio según Prioridad</span>
+          </div>
+          {priorityStats.length > 0 && (
+            <span className="text-xs text-slate-400 whitespace-nowrap">Global <span className="font-bold text-slate-700 tabular-nums">{avanceGlobal}%</span></span>
+          )}
         </div>
-        <div className="h-64">
+        <div className="h-52">
           {priorityStats.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={priorityStats} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} dy={10} />
-                <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                <Tooltip cursor={{ fill: '#f1f5f9' }} />
-                <Bar dataKey="Avance" radius={[4, 4, 0, 0]} maxBarSize={40}>
+              <BarChart data={priorityStats} margin={{ top: 20, right: 10, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#64748b' }} dy={8} />
+                <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} unit="%" width={40} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+                <Tooltip cursor={{ fill: '#f8fafc' }} content={<PrioridadBarTooltip />} />
+                <Bar dataKey="Avance" radius={[6, 6, 0, 0]} maxBarSize={48}>
                   {priorityStats.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.fill} />)}
+                  <LabelList dataKey="Avance" position="top" formatter={(v: any) => `${v}%`} style={{ fontSize: 11, fontWeight: 700, fill: '#475569' }} />
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
