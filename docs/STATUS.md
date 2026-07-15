@@ -497,6 +497,16 @@ Se modernizó el despliegue en producción: antes se **copiaban** las carpetas `
 - **Flujo de despliegue nuevo:** `git pull` → (`npm run build` si cambió el front, como Admin) → (`npm install` si cambió package.json) → (`npx prisma generate` si cambió el schema) → **reiniciar la terminal del backend**.
 - También se creó `JWT_SECRET` como variable de entorno del SO en producción (faltaba; el código nuevo aborta sin ella). Ver notas de despliegue.
 
+### 29. Fix: cancelar una tarea al 100% enviaba correo de "completada"
+
+Se detectó que al **cancelar una tarea que estaba al 100% de avance**, llegaba el correo de "tarea completada".
+
+**Causa:** la automatización de estados en `taskController.js` (`update` y `quickUpdate`) forzaba `estado = 'Completado'` cuando el avance era 100, **pisando un 'Cancelado' explícito**. La tarea se guardaba como Completado y entraba en la condición del correo (`estado === 'Completado'`).
+
+**Fix:** una **cancelación explícita ahora tiene prioridad** sobre la inferencia por porcentaje — si el estado es 'Cancelado', se respeta aunque el avance sea 100, y no se dispara el correo. El flujo normal de completar (100% → Completado + correo) queda intacto. Verificado con prueba de lógica en los casos clave.
+
+- **Commit:** `eaf3e3b` en `main`. ✅ Desplegado en producción. Solo backend (requiere reiniciar Node, sin build ni `db push`).
+
 ---
 
 ## Deuda técnica conocida
