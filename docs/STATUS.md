@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-07-09_
+_Última actualización: 2026-07-15_
 
 ---
 
@@ -506,6 +506,30 @@ Se detectó que al **cancelar una tarea que estaba al 100% de avance**, llegaba 
 **Fix:** una **cancelación explícita ahora tiene prioridad** sobre la inferencia por porcentaje — si el estado es 'Cancelado', se respeta aunque el avance sea 100, y no se dispara el correo. El flujo normal de completar (100% → Completado + correo) queda intacto. Verificado con prueba de lógica en los casos clave.
 
 - **Commit:** `eaf3e3b` en `main`. ✅ Desplegado en producción. Solo backend (requiere reiniciar Node, sin build ni `db push`).
+
+---
+
+## Completado en sesión 2026-07-15
+
+### 30. Gráficas enriquecidas en Panel de Actividades y Control de Gestión
+
+Las gráficas del componente compartido `ChartsSection` (`Dashboard.tsx`) se veían muy simples; se mejoraron (aplican en **Panel de Actividades** y **Control de Gestión**):
+
+**Dona "Distribución por Estado":**
+- **Total de tareas al centro** de la dona.
+- **Leyenda** con punto de color, estado, conteo y **%**.
+- **Tooltip** personalizado (color + estado + nº de tareas + %).
+- Se agregó el estado **Cancelado** al desglose.
+
+**Barras "Avance Promedio según Prioridad":**
+- Cuadrícula horizontal sutil y eje Y en **%** (0/25/50/75/100).
+- **Etiqueta de valor** sobre cada barra e indicador de **avance global**.
+- **Tooltip** con avance promedio + nº de tareas.
+- Fix: el eje Y se recortaba (`100%`→`0%`) por margen negativo/ancho corto; se corrigió con margen 0 y `width` 44.
+
+**Nota:** se evaluó y prototipó una tercera gráfica **"Tareas Atrasadas por Área"** (barras horizontales rojas), pero **se descartó por decisión del usuario** (revert `60636a5`). El código quedó en el historial (commit `62b28b8`) por si se retoma.
+
+- **Commits:** `9f9f867` (mejoras), `19beade` (fix eje Y) en `main`. ✅ Desplegado en producción. Solo frontend (`git pull` + `npm run build`).
 
 ---
 
