@@ -1506,6 +1506,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       { key: 'estado',             width: 14, header: 'Estado' },
       { key: 'fechaFin',           width: 16, header: 'Fecha Compromiso' },
       { key: 'fechaCierre',        width: 16, header: 'Fecha de Cierre' },
+      { key: 'ultimoAvance',       width: 18, header: 'Fecha Último Avance' },
       { key: 'diasAtraso',         width: 14, header: 'Días de Atraso' },
       { key: 'tematica',           width: 22, header: 'Temática' },
       { key: 'prioridad',          width: 13, header: 'Prioridad' },
@@ -1563,6 +1564,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       const rowBg = isOverdue ? 'FFfff1f2' : idx % 2 === 0 ? 'FFfafafa' : 'FFFFFFFF';
       const fechaDate = task.fecha_fin ? new Date(String(task.fecha_fin).split('T')[0] + 'T00:00:00') : null;
       const fechaCierreDate = (task as any).fecha_ejecucion ? new Date(String((task as any).fecha_ejecucion).split('T')[0] + 'T00:00:00') : null;
+      const ultimoAvanceDate = (task as any).ultimo_avance ? new Date(String((task as any).ultimo_avance).split('T')[0] + 'T00:00:00') : null;
       const totalSub = task.subtasks?.length || 0;
       const compSub = task.subtasks?.filter((s: any) => s.completada).length || 0;
       const avancePct = Number(task.porcentaje_avance) || 0;
@@ -1578,6 +1580,7 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         estado: task.estado,
         fechaFin: fechaDate,
         fechaCierre: fechaCierreDate,
+        ultimoAvance: ultimoAvanceDate,
         diasAtraso: isOverdue ? overdueDays : task.estado === 'Completado' ? 'Completada' : 'Al día',
         tematica: task.tematica || '-',
         prioridad: getPriorityLabel(task.prioridad),
@@ -1628,6 +1631,13 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         const fcCell = row.getCell('fechaCierre');
         fcCell.numFmt = 'DD/MM/YYYY';
         fcCell.alignment = { horizontal: 'center', vertical: 'middle' };
+      }
+
+      // Fecha del último avance (vacía si la tarea no tiene avances registrados)
+      if (ultimoAvanceDate) {
+        const uaCell = row.getCell('ultimoAvance');
+        uaCell.numFmt = 'DD/MM/YYYY';
+        uaCell.alignment = { horizontal: 'center', vertical: 'middle' };
       }
 
       // Días de atraso: color

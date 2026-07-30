@@ -139,19 +139,25 @@ const taskController = {
   
   getAll: async (req, res) => {
     try {
-      const tasks = await prisma.task.findMany({ 
+      const tasks = await prisma.task.findMany({
         orderBy: { id: 'desc' },
-        include: { subtasks: true }
+        include: {
+          subtasks: true,
+          // Último avance = comentario más reciente (la pestaña "Avances" son comentarios).
+          comments: { orderBy: { created_at: 'desc' }, take: 1, select: { created_at: true } }
+        }
       });
 
       // Interceptamos y limpiamos el formato ISO de Prisma antes de enviarlo a React
-      const formattedTasks = tasks.map(task => ({
+      const formattedTasks = tasks.map(({ comments, ...task }) => ({
         ...task,
         // Tomamos el string '2026-05-11T00:00:00.000Z', lo partimos por la 'T' y enviamos solo '2026-05-11'
         fecha_registro: task.fecha_registro ? new Date(task.fecha_registro).toISOString().split('T')[0] : '',
         fecha_inicio: task.fecha_inicio ? new Date(task.fecha_inicio).toISOString().split('T')[0] : '',
         fecha_fin: task.fecha_fin ? new Date(task.fecha_fin).toISOString().split('T')[0] : '',
-        fecha_ejecucion: task.fecha_ejecucion ? new Date(task.fecha_ejecucion).toISOString().split('T')[0] : null
+        fecha_ejecucion: task.fecha_ejecucion ? new Date(task.fecha_ejecucion).toISOString().split('T')[0] : null,
+        // Fecha del último avance registrado (YYYY-MM-DD) o null si no hay avances.
+        ultimo_avance: comments && comments[0] ? new Date(comments[0].created_at).toISOString().split('T')[0] : null
       }));
 
       res.json(formattedTasks);
