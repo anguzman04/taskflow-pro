@@ -351,7 +351,7 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [selectedAreas, setSelectedAreas] = useState<number[]>([]);
   const [accesoSupervision, setAccesoSupervision] = useState(false);
-  const [controlAreaId, setControlAreaId] = useState<number | null>(null);
+  const [controlAreaIds, setControlAreaIds] = useState<string[]>([]);
   //const [controlTasks, setControlTasks] = useState<any[]>([]);
   
   const [controlResponsableFilter, setControlResponsableFilter] = useState<string[]>([]);
@@ -606,17 +606,17 @@ const filteredControlTasks = controlTasks.filter(task => {
       matchesStatus = task.estado === statusFilter;
     }
 
-    // 3. Filtro por Área (FORZADO EN FRONTEND)
+    // 3. Filtro por Área (multi-selección en frontend; vacío = todas las autorizadas)
     let matchesArea = true;
-    if (controlAreaId) {
+    if (controlAreaIds.length > 0) {
       let belongsToArea = false;
-      if (task.area_origen_id === controlAreaId) belongsToArea = true;
+      if (task.area_origen_id != null && controlAreaIds.includes(String(task.area_origen_id))) belongsToArea = true;
       if (!belongsToArea && task.responsable) {
         const responsablesArray = String(task.responsable).split(',').map(r => r.trim());
         for (const respName of responsablesArray) {
           const normalize = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase() : '';
           const respUser = allUsers.find(u => normalize(`${u.nombre || ''} ${u.apellido || ''}`) === normalize(respName));
-          if (respUser && respUser.area_id === controlAreaId) {
+          if (respUser && respUser.area_id != null && controlAreaIds.includes(String(respUser.area_id))) {
             belongsToArea = true; break;
           }
         }
@@ -737,8 +737,9 @@ const filteredReportTasks = tasks.filter(task => {
     
     try {
       const userId = parseInt(String(currentUser.id));
-      const areaQuery = controlAreaId ? `&areaId=${controlAreaId}` : '';
-      const url = `/api/control/tasks?userId=${userId}${areaQuery}`;
+      // El filtro por área es multi-selección en el frontend; el backend
+      // devuelve todas las tareas autorizadas del usuario.
+      const url = `/api/control/tasks?userId=${userId}`;
       const res = await fetch(url);
       
       if (res.status === 401) { handleLogout(); return; }
@@ -761,16 +762,12 @@ const filteredReportTasks = tasks.filter(task => {
     const normalizeText = (text: string) => text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, ' ').trim().toUpperCase() : '';
 
     const localControlTasks = tasks.filter(task => {
-      if (currentUser.is_admin && !controlAreaId) return true;
+      if (currentUser.is_admin) return true;
 
       let isValidForControl = false;
-      
-      if (task.area_origen_id) {
-         if (controlAreaId && task.area_origen_id === controlAreaId && areasAutorizadas.includes(task.area_origen_id)) {
-           isValidForControl = true;
-         } else if (!controlAreaId && areasAutorizadas.includes(task.area_origen_id)) {
-           isValidForControl = true;
-         }
+
+      if (task.area_origen_id && areasAutorizadas.includes(task.area_origen_id)) {
+        isValidForControl = true;
       }
 
       if (!isValidForControl) {
@@ -778,13 +775,9 @@ const filteredReportTasks = tasks.filter(task => {
           for (const respName of responsablesArray) {
              const responsableUser = allUsers.find(u => normalizeText(`${u.nombre || ''} ${u.apellido || ''}`) === normalizeText(respName));
              const taskAreaId = responsableUser ? responsableUser.area_id : null;
-             
-             if (taskAreaId) {
-               if (controlAreaId && taskAreaId === controlAreaId && areasAutorizadas.includes(taskAreaId)) {
-                 isValidForControl = true; break;
-               } else if (!controlAreaId && areasAutorizadas.includes(taskAreaId)) {
-                 isValidForControl = true; break;
-               }
+
+             if (taskAreaId && areasAutorizadas.includes(taskAreaId)) {
+               isValidForControl = true; break;
              }
           }
       }
@@ -1111,7 +1104,7 @@ const handleUpdateComment = async (commentId: number) => {
 
   useEffect(() => {
     if (currentView === 'control') fetchControlTasks();
-  }, [currentView, controlAreaId, currentUser, tasks, allUsers, areas]);
+  }, [currentView, currentUser, tasks, allUsers, areas]);
 
   const toggleResponsible = (userName: string) => {
     setSelectedResponsibles(prev => { if(prev.includes(userName)) return prev.filter(name => name !== userName); else return [...prev, userName]; });
@@ -3613,14 +3606,17 @@ case 'responsable':
                   </div>
                   <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
                     <Filter className="text-slate-400 shrink-0" size={20} />
-                    <select className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 w-full sm:min-w-[240px]" value={controlAreaId || ''} onChange={(e) => setControlAreaId(e.target.value ? parseInt(e.target.value) : null)}>
-                      <option value="">Todas las  áreas Autorizadas</option>
-                      {areas.filter(a => {
+                    <MultiSelect
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold w-full sm:min-w-[240px]"
+                      placeholder="Todas las áreas Autorizadas"
+                      selected={controlAreaIds}
+                      onChange={setControlAreaIds}
+                      options={areas.filter(a => {
                         if (currentUser?.is_admin) return true;
                         const autorizadas = currentUser?.areas_autorizadas ? String(currentUser.areas_autorizadas).split(',') : [];
                         return autorizadas.includes(a.id!.toString());
-                      }).map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
-                    </select>
+                      }).map(a => ({ value: String(a.id), label: a.nombre }))}
+                    />
                   </div>
                 </div>
 
