@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-07-15_
+_Última actualización: 2026-07-31_
 
 ---
 
@@ -530,6 +530,31 @@ Las gráficas del componente compartido `ChartsSection` (`Dashboard.tsx`) se ve�
 **Nota:** se evaluó y prototipó una tercera gráfica **"Tareas Atrasadas por Área"** (barras horizontales rojas), pero **se descartó por decisión del usuario** (revert `60636a5`). El código quedó en el historial (commit `62b28b8`) por si se retoma.
 
 - **Commits:** `9f9f867` (mejoras), `19beade` (fix eje Y) en `main`. ✅ Desplegado en producción. Solo frontend (`git pull` + `npm run build`).
+
+---
+
+## Completado en sesión 2026-07-31
+
+### 31. Filtros: multi-selección de áreas, columna de último avance y rediseño de barras de filtros
+
+Conjunto de mejoras a filtros y reportes (todo `Dashboard.tsx` salvo el punto del backend):
+
+**a) Filtro de áreas multi-selección en Control de Gestión** (commit `fa08dd3`)
+- El "Filtro Maestro por área" pasó de selección única a **multi-selección** (`controlAreaIds: string[]`, componente `MultiSelect`). El área ya **no se manda al backend**: se traen todas las tareas autorizadas del usuario y el filtrado por área (una o varias) es en el frontend. Vacío = todas.
+
+**b) Columna "Fecha Último Avance" en el Excel** (commit `14cc6a3`)
+- Backend `getAll`: cada tarea incluye `ultimo_avance` = fecha del **comentario/avance más reciente** (la pestaña "Avances" son comentarios), o null. El Excel exportado agrega la columna **"Fecha Último Avance"** (formato `DD/MM/YYYY`) junto a "Fecha de Cierre". Probado: de 236 tareas, 94 con fecha.
+
+**c) Barra de filtros compacta y uniforme en Control de Gestión** (commit `4d99850`)
+- Se quitó el título grande y los 3 bloques desparejos. Ahora: encabezado delgado (ícono + "Filtros" + **contador de activos** + "Limpiar"), búsqueda a todo el ancho, y **grilla pareja de filtros con mini-etiquetas** (Área, Estado, Responsable, Prioridad, Registro desde/hasta).
+
+**d) Estado multi-selección en Control de Gestión** (commit `fe60752`)
+- El Estado pasó a multi-selección con un filtro **propio** (`controlStatusFilter: string[]`), independiente del `statusFilter` compartido que usan las **tarjetas KPI clicables del Panel** (que quedan intactas). "Atrasadas" es combinable (lógica OR).
+
+**e) Reportes: barra compacta + filtros nuevos** (commit `09a5606`)
+- Reportes replica el diseño de Control (encabezado "Filtros" + contador + "Limpiar" + "Exportar Excel", búsqueda a todo el ancho, grilla uniforme) y **agrega filtros propios**: Estado (multi, "Atrasadas" combinable), Prioridad (multi), Responsable (multi) y Búsqueda — además de los que ya tenía (Área, Proyecto, fechas). Alimentan `filteredReportTasks` → los KPIs y gráficas recalculan.
+
+**Estado:** todo ✅ validado en vivo (navegador) y **desplegado en producción**. El punto (b) requiere reiniciar Node (cambio de backend); el resto es frontend puro (`git pull` + `npm run build`).
 
 ---
 
