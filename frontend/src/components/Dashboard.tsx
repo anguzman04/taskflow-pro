@@ -422,6 +422,10 @@ export default function App() {
 
   const [reportAreaFilter, setReportAreaFilter] = useState<string[]>([]);
   const [reportProjectFilter, setReportProjectFilter] = useState<string[]>([]);
+  const [reportSearch, setReportSearch] = useState<string>('');
+  const [reportStatusFilter, setReportStatusFilter] = useState<string[]>([]);
+  const [reportPriorityFilter, setReportPriorityFilter] = useState<string[]>([]);
+  const [reportResponsableFilter, setReportResponsableFilter] = useState<string[]>([]);
   const [reportDateFrom, setReportDateFrom] = useState<string>('');
   const [reportDateTo, setReportDateTo] = useState<string>('');
 
@@ -665,8 +669,30 @@ const filteredReportTasks = tasks.filter(task => {
     if (reportDateFrom && fechaRegLimpia) matchDate = fechaRegLimpia >= reportDateFrom;
     if (reportDateTo && fechaRegLimpia && matchDate) matchDate = fechaRegLimpia <= reportDateTo;
   }
-  
-  return matchArea && matchProject && matchDate;
+
+  // Búsqueda por actividad
+  const matchSearch = !reportSearch.trim() || String(task.actividad || '').toLowerCase().includes(reportSearch.toLowerCase());
+
+  // Estado (multi-selección; "Atrasadas" combinable con OR)
+  let matchStatus = true;
+  if (reportStatusFilter.length > 0) {
+    matchStatus = reportStatusFilter.some(f => {
+      if (f === 'Atrasadas') return getDaysOverdue(task.fecha_fin, task.estado) > 0;
+      return task.estado === f;
+    });
+  }
+
+  // Prioridad (multi-selección)
+  const matchPriority = reportPriorityFilter.length === 0 || reportPriorityFilter.includes(task.prioridad);
+
+  // Responsable (multi-selección; coincide si comparte alguno)
+  let matchResponsable = true;
+  if (reportResponsableFilter.length > 0) {
+    const responsablesArray = task.responsable ? String(task.responsable).split(',').map(r => r.trim()) : [];
+    matchResponsable = reportResponsableFilter.some(f => responsablesArray.includes(f));
+  }
+
+  return matchArea && matchProject && matchDate && matchSearch && matchStatus && matchPriority && matchResponsable;
 });
 
 
@@ -2363,44 +2389,70 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       return { name: fullName, total: ut.length, completed: ut.filter(t => t.estado === 'Completado').length, overdue: ut.filter(t => getDaysOverdue(t.fecha_fin, t.estado) > 0).length, progress: ut.length > 0 ? Math.round(ut.reduce((s, t) => s + (Number(t.porcentaje_avance) || 0), 0) / ut.length) : 0 };
     }).filter(u => u.total > 0).sort((a, b) => b.total - a.total).slice(0, 10);
 
-    const clearFilters = () => { setReportAreaFilter([]); setReportProjectFilter([]); setReportDateFrom(''); setReportDateTo(''); };
+    const clearFilters = () => { setReportSearch(''); setReportAreaFilter([]); setReportProjectFilter([]); setReportStatusFilter([]); setReportPriorityFilter([]); setReportResponsableFilter([]); setReportDateFrom(''); setReportDateTo(''); };
 
     return (
       <div className="space-y-6">
 
         {/* Filtros */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-end gap-4">
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Área</label>
-            <MultiSelect
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium"
-              placeholder="Todas las Áreas"
-              selected={reportAreaFilter}
-              onChange={setReportAreaFilter}
-              options={areas.map(a => ({ value: String(a.id), label: a.nombre }))}
-            />
+        <div className="bg-white p-4 lg:p-5 rounded-2xl border border-slate-200 shadow-sm">
+          {(() => {
+            const activos = (reportSearch.trim() ? 1 : 0) + (reportAreaFilter.length > 0 ? 1 : 0) + (reportProjectFilter.length > 0 ? 1 : 0) + (reportStatusFilter.length > 0 ? 1 : 0) + (reportPriorityFilter.length > 0 ? 1 : 0) + (reportResponsableFilter.length > 0 ? 1 : 0) + (reportDateFrom ? 1 : 0) + (reportDateTo ? 1 : 0);
+            return (
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-2">
+                  <Filter className="text-slate-400" size={18} />
+                  <span className="text-sm font-bold text-slate-900">Filtros</span>
+                  {activos > 0 && <span className="text-[11px] font-bold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">{activos} activo{activos !== 1 ? 's' : ''}</span>}
+                </div>
+                <div className="flex items-center gap-2">
+                  {activos > 0 && (
+                    <button onClick={clearFilters} className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors">
+                      <FilterX size={14} /> Limpiar
+                    </button>
+                  )}
+                  <button onClick={handleExportFilteredReport} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold transition-all shadow-sm shadow-emerald-200">
+                    <Download size={16} /> Exportar Excel
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input type="text" placeholder="Buscar actividad..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={reportSearch} onChange={(e) => setReportSearch(e.target.value)} />
           </div>
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Filtrar por Proyecto</label>
-            <MultiSelect
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium"
-              placeholder="Todos los Proyectos"
-              selected={reportProjectFilter}
-              onChange={setReportProjectFilter}
-              options={projects.map(p => ({ value: String(p.id), label: p.nombre }))}
-            />
-          </div>
-          <div className="w-[140px]">
-            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Desde</label>
-            <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium" value={reportDateFrom} onChange={(e) => setReportDateFrom(e.target.value)} />
-          </div>
-          <div className="w-[140px]">
-            <label className="text-[10px] font-bold text-slate-400 uppercase block mb-1">Hasta</label>
-            <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:border-blue-500 font-medium" value={reportDateTo} onChange={(e) => setReportDateTo(e.target.value)} />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={clearFilters} className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold transition-all"><FilterX size={18} /></button>
-            <button onClick={handleExportFilteredReport} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition-all shadow-sm shadow-emerald-200 flex items-center gap-2"><Download size={18} /> Exportar Excel</button>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Área</label>
+              <MultiSelect className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium w-full" placeholder="Todas" selected={reportAreaFilter} onChange={setReportAreaFilter} options={areas.map(a => ({ value: String(a.id), label: a.nombre }))} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Proyecto</label>
+              <MultiSelect className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium w-full" placeholder="Todos" selected={reportProjectFilter} onChange={setReportProjectFilter} options={projects.map(p => ({ value: String(p.id), label: p.nombre }))} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Estado</label>
+              <MultiSelect className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium w-full" placeholder="Todos" selected={reportStatusFilter} onChange={setReportStatusFilter} options={[{ value: 'Planeado', label: 'Planeado' }, { value: 'En curso', label: 'En curso' }, { value: 'En espera', label: 'En espera' }, { value: 'Atrasadas', label: 'Atrasadas 🚨' }, { value: 'Completado', label: 'Completado' }, { value: 'Cancelado', label: 'Cancelado' }]} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Prioridad</label>
+              <MultiSelect className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium w-full" placeholder="Todas" selected={reportPriorityFilter} onChange={setReportPriorityFilter} options={PRIORITY_OPTIONS} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Responsable</label>
+              <MultiSelect className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium w-full" placeholder="Todos" selected={reportResponsableFilter} onChange={setReportResponsableFilter} options={Array.from(new Set(tasks.flatMap(t => t.responsable ? String(t.responsable).split(',').map(r => r.trim()) : []))).filter(Boolean).sort().map(resp => ({ value: String(resp), label: String(resp) }))} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Registro desde</label>
+              <input type="date" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-full" value={reportDateFrom} onChange={(e) => setReportDateFrom(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Registro hasta</label>
+              <input type="date" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-full" value={reportDateTo} onChange={(e) => setReportDateTo(e.target.value)} />
+            </div>
           </div>
         </div>
 
