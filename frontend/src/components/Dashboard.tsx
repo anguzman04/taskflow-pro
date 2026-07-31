@@ -3608,17 +3608,39 @@ case 'responsable':
 
         {currentView === 'control' && (
             <>
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 lg:p-6 mb-6 shadow-sm">
-                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <h3 className="text-lg font-bold text-slate-900">Filtro Maestro por área</h3>
-                    <p className="text-sm text-slate-500">Selecciona un  área para visualizar todas sus actividades</p>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-                    <Filter className="text-slate-400 shrink-0" size={20} />
+              <div className="bg-white rounded-2xl border border-slate-200 p-4 lg:p-5 mb-6 shadow-sm">
+                {/* Encabezado delgado: título + contador de activos + limpiar */}
+                {(() => {
+                  const activos = (controlAreaIds.length > 0 ? 1 : 0) + (controlResponsableFilter.length > 0 ? 1 : 0) + (controlPriorityFilter.length > 0 ? 1 : 0) + (statusFilter !== 'All' ? 1 : 0) + (controlDateFrom ? 1 : 0) + (controlDateTo ? 1 : 0) + (searchTerm.trim() ? 1 : 0);
+                  return (
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                      <div className="flex items-center gap-2">
+                        <Filter className="text-slate-400" size={18} />
+                        <span className="text-sm font-bold text-slate-900">Filtros</span>
+                        {activos > 0 && <span className="text-[11px] font-bold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">{activos} activo{activos !== 1 ? 's' : ''}</span>}
+                      </div>
+                      {activos > 0 && (
+                        <button onClick={() => { setSearchTerm(''); setControlAreaIds([]); setControlResponsableFilter([]); setControlPriorityFilter([]); setStatusFilter('All'); setControlDateFrom(''); setControlDateTo(''); }} className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors">
+                          <FilterX size={14} /> Limpiar
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Búsqueda a todo el ancho */}
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input type="text" placeholder="Buscar actividad en supervisión..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                </div>
+
+                {/* Grilla pareja de filtros con mini-etiquetas */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Área</label>
                     <MultiSelect
-                      className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-semibold w-full sm:min-w-[240px]"
-                      placeholder="Todas las áreas Autorizadas"
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium w-full"
+                      placeholder="Todas"
                       selected={controlAreaIds}
                       onChange={setControlAreaIds}
                       options={areas.filter(a => {
@@ -3628,25 +3650,10 @@ case 'responsable':
                       }).map(a => ({ value: String(a.id), label: a.nombre }))}
                     />
                   </div>
-                </div>
-
-                <div className="flex flex-col lg:flex-row gap-4 mt-6 pt-6 border-t border-slate-100">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                    <input type="text" placeholder="Buscar actividad en supervisión..." className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 shadow-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row gap-4">
-                    <MultiSelect
-                      className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm font-medium w-full sm:w-56"
-                      placeholder="Todos los Responsables"
-                      selected={controlResponsableFilter}
-                      onChange={setControlResponsableFilter}
-                      options={Array.from(new Set(controlTasks.flatMap(t => t.responsable ? String(t.responsable).split(',').map(r => r.trim()) : []))).filter(Boolean).sort().map(resp => ({ value: String(resp), label: String(resp) }))}
-                    />
-
-                    <select className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm outline-none font-medium text-slate-600 w-full sm:w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                      <option value="All">Todos los Estados</option>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Estado</label>
+                    <select className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 w-full" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                      <option value="All">Todos</option>
                       <option value="Planeado">Planeado</option>
                       <option value="En curso">En curso</option>
                       <option value="En espera">En espera</option>
@@ -3654,27 +3661,34 @@ case 'responsable':
                       <option value="Completado">Completado</option>
                     </select>
                   </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-4 mt-4 pt-4 border-t border-slate-100">
-                  <MultiSelect
-                    className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-4 py-2.5 text-sm font-medium flex-1"
-                    placeholder="Todas las Prioridades"
-                    selected={controlPriorityFilter}
-                    onChange={setControlPriorityFilter}
-                    options={PRIORITY_OPTIONS}
-                  />
-                  <div className="flex items-center gap-2 flex-1">
-                    <Calendar size={15} className="text-slate-400 shrink-0" />
-                    <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateFrom} onChange={e => setControlDateFrom(e.target.value)} title="Registro desde" />
-                    <span className="text-slate-400 text-xs font-bold">—</span>
-                    <input type="date" className="bg-slate-50 border border-slate-200 shadow-sm rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 flex-1" value={controlDateTo} onChange={e => setControlDateTo(e.target.value)} title="Registro hasta" />
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Responsable</label>
+                    <MultiSelect
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium w-full"
+                      placeholder="Todos"
+                      selected={controlResponsableFilter}
+                      onChange={setControlResponsableFilter}
+                      options={Array.from(new Set(controlTasks.flatMap(t => t.responsable ? String(t.responsable).split(',').map(r => r.trim()) : []))).filter(Boolean).sort().map(resp => ({ value: String(resp), label: String(resp) }))}
+                    />
                   </div>
-                  {(controlPriorityFilter.length > 0 || controlDateFrom || controlDateTo) && (
-                    <button onClick={() => { setControlPriorityFilter([]); setControlDateFrom(''); setControlDateTo(''); }} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition-all whitespace-nowrap">
-                      <FilterX size={15} /> Limpiar
-                    </button>
-                  )}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Prioridad</label>
+                    <MultiSelect
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium w-full"
+                      placeholder="Todas"
+                      selected={controlPriorityFilter}
+                      onChange={setControlPriorityFilter}
+                      options={PRIORITY_OPTIONS}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Registro desde</label>
+                    <input type="date" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-full" value={controlDateFrom} onChange={e => setControlDateFrom(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Registro hasta</label>
+                    <input type="date" className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 focus:ring-2 focus:ring-blue-500/20 w-full" value={controlDateTo} onChange={e => setControlDateTo(e.target.value)} />
+                  </div>
                 </div>
               </div>
 			  
