@@ -352,6 +352,7 @@ export default function App() {
   const [selectedAreas, setSelectedAreas] = useState<number[]>([]);
   const [accesoSupervision, setAccesoSupervision] = useState(false);
   const [controlAreaIds, setControlAreaIds] = useState<string[]>([]);
+  const [controlStatusFilter, setControlStatusFilter] = useState<string[]>([]);
   //const [controlTasks, setControlTasks] = useState<any[]>([]);
   
   const [controlResponsableFilter, setControlResponsableFilter] = useState<string[]>([]);
@@ -585,25 +586,20 @@ const filteredControlTasks = controlTasks.filter(task => {
     const act = task.actividad || '';
     const matchesSearch = act.toLowerCase().includes(searchTerm.toLowerCase());
 
-    // 2. Filtro de Estado (¡CORREGIDO PARA ATRASADAS!)
-    let matchesStatus = false;
-    if (statusFilter === 'All') {
-      matchesStatus = true;
-    } else if (statusFilter === 'Atrasadas') {
-      if (!task.fecha_fin) {
-        matchesStatus = false;
-      } else {
-        // Limpiamos la fecha aislando solo el "YYYY-MM-DD"
-        const fechaLimpia = task.fecha_fin.split('T')[0]; 
-        const fechaFinDate = new Date(`${fechaLimpia}T00:00:00`);
-        
-        const hoy = new Date();
-        hoy.setHours(0, 0, 0, 0);
-        
-        matchesStatus = (task.estado !== 'Completado' && task.estado !== 'Cancelado') && (fechaFinDate < hoy);
-      }
-    } else {
-      matchesStatus = task.estado === statusFilter;
+    // 2. Filtro de Estado (multi-selección; vacío = todos; "Atrasadas" combinable con OR)
+    let matchesStatus = true;
+    if (controlStatusFilter.length > 0) {
+      matchesStatus = controlStatusFilter.some(f => {
+        if (f === 'Atrasadas') {
+          if (!task.fecha_fin) return false;
+          const fechaLimpia = task.fecha_fin.split('T')[0];
+          const fechaFinDate = new Date(`${fechaLimpia}T00:00:00`);
+          const hoy = new Date();
+          hoy.setHours(0, 0, 0, 0);
+          return (task.estado !== 'Completado' && task.estado !== 'Cancelado') && (fechaFinDate < hoy);
+        }
+        return task.estado === f;
+      });
     }
 
     // 3. Filtro por Área (multi-selección en frontend; vacío = todas las autorizadas)
@@ -3611,7 +3607,7 @@ case 'responsable':
               <div className="bg-white rounded-2xl border border-slate-200 p-4 lg:p-5 mb-6 shadow-sm">
                 {/* Encabezado delgado: título + contador de activos + limpiar */}
                 {(() => {
-                  const activos = (controlAreaIds.length > 0 ? 1 : 0) + (controlResponsableFilter.length > 0 ? 1 : 0) + (controlPriorityFilter.length > 0 ? 1 : 0) + (statusFilter !== 'All' ? 1 : 0) + (controlDateFrom ? 1 : 0) + (controlDateTo ? 1 : 0) + (searchTerm.trim() ? 1 : 0);
+                  const activos = (controlAreaIds.length > 0 ? 1 : 0) + (controlResponsableFilter.length > 0 ? 1 : 0) + (controlPriorityFilter.length > 0 ? 1 : 0) + (controlStatusFilter.length > 0 ? 1 : 0) + (controlDateFrom ? 1 : 0) + (controlDateTo ? 1 : 0) + (searchTerm.trim() ? 1 : 0);
                   return (
                     <div className="flex items-center justify-between gap-3 mb-4">
                       <div className="flex items-center gap-2">
@@ -3620,7 +3616,7 @@ case 'responsable':
                         {activos > 0 && <span className="text-[11px] font-bold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">{activos} activo{activos !== 1 ? 's' : ''}</span>}
                       </div>
                       {activos > 0 && (
-                        <button onClick={() => { setSearchTerm(''); setControlAreaIds([]); setControlResponsableFilter([]); setControlPriorityFilter([]); setStatusFilter('All'); setControlDateFrom(''); setControlDateTo(''); }} className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors">
+                        <button onClick={() => { setSearchTerm(''); setControlAreaIds([]); setControlResponsableFilter([]); setControlPriorityFilter([]); setControlStatusFilter([]); setControlDateFrom(''); setControlDateTo(''); }} className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-slate-800 transition-colors">
                           <FilterX size={14} /> Limpiar
                         </button>
                       )}
@@ -3652,14 +3648,19 @@ case 'responsable':
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Estado</label>
-                    <select className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm outline-none font-medium text-slate-600 w-full" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                      <option value="All">Todos</option>
-                      <option value="Planeado">Planeado</option>
-                      <option value="En curso">En curso</option>
-                      <option value="En espera">En espera</option>
-                      <option value="Atrasadas">Atrasadas 🚨</option>
-                      <option value="Completado">Completado</option>
-                    </select>
+                    <MultiSelect
+                      className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium w-full"
+                      placeholder="Todos"
+                      selected={controlStatusFilter}
+                      onChange={setControlStatusFilter}
+                      options={[
+                        { value: 'Planeado', label: 'Planeado' },
+                        { value: 'En curso', label: 'En curso' },
+                        { value: 'En espera', label: 'En espera' },
+                        { value: 'Atrasadas', label: 'Atrasadas 🚨' },
+                        { value: 'Completado', label: 'Completado' },
+                      ]}
+                    />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Responsable</label>
