@@ -144,7 +144,7 @@ const taskController = {
         include: {
           subtasks: true,
           // Último avance = comentario más reciente (la pestaña "Avances" son comentarios).
-          comments: { orderBy: { created_at: 'desc' }, take: 1, select: { created_at: true } }
+          comments: { orderBy: { created_at: 'desc' }, take: 1, select: { created_at: true, content: true } }
         }
       });
 
@@ -157,7 +157,9 @@ const taskController = {
         fecha_fin: task.fecha_fin ? new Date(task.fecha_fin).toISOString().split('T')[0] : '',
         fecha_ejecucion: task.fecha_ejecucion ? new Date(task.fecha_ejecucion).toISOString().split('T')[0] : null,
         // Fecha del último avance registrado (YYYY-MM-DD) o null si no hay avances.
-        ultimo_avance: comments && comments[0] ? new Date(comments[0].created_at).toISOString().split('T')[0] : null
+        ultimo_avance: comments && comments[0] ? new Date(comments[0].created_at).toISOString().split('T')[0] : null,
+        // Texto del último avance (contenido del comentario más reciente) o null.
+        ultimo_avance_texto: comments && comments[0] ? comments[0].content : null
       }));
 
       res.json(formattedTasks);
