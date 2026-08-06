@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-07-31_
+_Última actualización: 2026-08-06_
 
 ---
 
@@ -555,6 +555,20 @@ Conjunto de mejoras a filtros y reportes (todo `Dashboard.tsx` salvo el punto de
 - Reportes replica el diseño de Control (encabezado "Filtros" + contador + "Limpiar" + "Exportar Excel", búsqueda a todo el ancho, grilla uniforme) y **agrega filtros propios**: Estado (multi, "Atrasadas" combinable), Prioridad (multi), Responsable (multi) y Búsqueda — además de los que ya tenía (Área, Proyecto, fechas). Alimentan `filteredReportTasks` → los KPIs y gráficas recalculan.
 
 **Estado:** todo ✅ validado en vivo (navegador) y **desplegado en producción**. El punto (b) requiere reiniciar Node (cambio de backend); el resto es frontend puro (`git pull` + `npm run build`).
+
+---
+
+## Completado en sesión 2026-08-06
+
+### 32. Columna "Comentario Último Avance" en el Excel
+
+Complementa la columna "Fecha Último Avance" (sección 31.b): además de la fecha, el reporte ahora incluye el **texto del comentario** de ese avance.
+
+- **Backend `getAll`:** el `include` de `comments` (el más reciente) ahora también trae `content`; se expone `ultimo_avance_texto` = contenido del comentario/avance más reciente (o null). La fecha (`ultimo_avance`) y el texto salen del **mismo comentario**.
+- **Excel:** columna nueva **"Comentario Último Avance"** junto a "Fecha Último Avance".
+- Verificado contra la BD real: 99 tareas traen el texto correctamente.
+
+- **Commit:** `c181a0b` en `main`. Despliegue: **backend + frontend** (`git pull` → `npm run build` + reiniciar Node). Sin `npm install` ni `db push`.
 
 ---
 
