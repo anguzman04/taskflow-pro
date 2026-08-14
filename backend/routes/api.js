@@ -15,6 +15,7 @@ const projectController = require('../controllers/projectController');
 const noteController = require('../controllers/noteController');
 const personController = require('../controllers/personController');
 const changeControlController = require('../controllers/changeControlController');
+const kpiController = require('../controllers/kpiController');
 
 // ==========================================
 // 1. RUTAS PÚBLICAS
@@ -121,6 +122,21 @@ router.get('/change-controls/:id/download', changeControlController.download);
 router.post('/change-controls', changeControlController.create);
 router.put('/change-controls/:id', changeControlController.update);
 router.delete('/change-controls/:id', changeControlController.delete);
+
+// Indicadores (KPI)
+router.get('/kpi/apps', kpiController.listApps);
+router.post('/kpi/apps', kpiController.createApp);
+router.put('/kpi/apps/:id', kpiController.updateApp);
+router.delete('/kpi/apps/:id', kpiController.deleteApp);
+router.get('/kpi/incidentes', kpiController.listIncidentes);
+router.post('/kpi/incidentes', kpiController.createIncidente);
+router.put('/kpi/incidentes/:id', kpiController.updateIncidente);
+router.delete('/kpi/incidentes/:id', kpiController.deleteIncidente);
+router.get('/kpi/despliegues', kpiController.listDespliegues);
+router.post('/kpi/despliegues', kpiController.createDespliegue);
+router.put('/kpi/despliegues/:id', kpiController.updateDespliegue);
+router.delete('/kpi/despliegues/:id', kpiController.deleteDespliegue);
+router.get('/kpi/metrics', kpiController.metrics);
 
 // Historial y Evidencias
 router.get('/audit-logs/:taskId', auditLogController.getByTask);
