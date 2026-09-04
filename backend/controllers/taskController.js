@@ -201,7 +201,10 @@ const taskController = {
           observacion: observacion || '',
           porcentaje_avance: parseInt(porcentaje_avance) || 0,
           estado: estado || 'Pendiente',
-          created_by_id: req.userId, 
+          // Si la tarea NACE ya cerrada (Completado/Cancelado) desde el formulario,
+          // estampamos la fecha de cierre en el momento (las otras rutas ya lo hacen).
+          fecha_ejecucion: esEstadoCerrado(estado || 'Pendiente') ? new Date() : null,
+          created_by_id: req.userId,
           proyecto_id: proyecto_id ? parseInt(proyecto_id) : null,
           area_origen_id: area_origen_id ? parseInt(area_origen_id) : null,
           gerente_responsable: gerente_responsable || null,
@@ -217,6 +220,11 @@ const taskController = {
         }
       });
       
+      // Rastro del cierre en auditoría si la tarea se creó ya cerrada.
+      if (esEstadoCerrado(newTask.estado)) {
+        await registrarCierreAudit(newTask.id, req.userId, null, newTask.estado, newTask.fecha_ejecucion);
+      }
+
       try {
         const allUsers = await prisma.user.findMany();
         const creator = allUsers.find(u => u.id === req.userId);
