@@ -35,7 +35,7 @@ export default function KpiView({ currentUser }: any) {
   const [nuevaSede, setNuevaSede] = useState('');
 
   const [nuevaApp, setNuevaApp] = useState('');
-  const [inc, setInc] = useState({ app_id: '', sede_id: '', inicio: '', fin: '', causa: '', resolucion: '' });
+  const [inc, setInc] = useState({ app_id: '', sede_id: '', inicio: '', fin: '', causa: '', origen_causa: '', resolucion: '' });
   const [dep, setDep] = useState({ app_id: '', fecha: '', resultado: 'Exitoso', descripcion: '' });
 
   const fetchApps = async () => { try { setApps(await jget('/api/kpi/apps')); } catch (e) { console.error(e); } };
@@ -82,7 +82,7 @@ export default function KpiView({ currentUser }: any) {
   const addIncidente = async () => {
     if (!inc.app_id || !inc.inicio || !inc.fin) { alert('Aplicación, inicio y fin son obligatorios.'); return; }
     if (new Date(inc.fin) <= new Date(inc.inicio)) { alert('El fin debe ser posterior al inicio.'); return; }
-    try { await jsend('/api/kpi/incidentes', 'POST', inc); setInc({ app_id: '', sede_id: '', inicio: '', fin: '', causa: '', resolucion: '' }); await fetchMonthData(); }
+    try { await jsend('/api/kpi/incidentes', 'POST', inc); setInc({ app_id: '', sede_id: '', inicio: '', fin: '', causa: '', origen_causa: '', resolucion: '' }); await fetchMonthData(); }
     catch (e) { console.error(e); alert('No se pudo registrar el incidente.'); }
   };
   const delIncidente = async (id: number) => {
@@ -102,7 +102,6 @@ export default function KpiView({ currentUser }: any) {
   };
 
   const fmtDateTime = (s: string) => s ? new Date(s).toLocaleString('es-CO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-  const fmtDate = (s: string) => s ? new Date(String(s).split('T')[0] + 'T00:00:00').toLocaleDateString('es-CO') : '—';
   const appName = (id: number) => apps.find(a => a.id === id)?.nombre || `App #${id}`;
 
   const g = metrics?.global;
@@ -214,16 +213,23 @@ export default function KpiView({ currentUser }: any) {
                 <div><label className={lbl}>Inicio</label><input type="datetime-local" className={inp} value={inc.inicio} onChange={e => setInc({ ...inc, inicio: e.target.value })} /></div>
                 <div><label className={lbl}>Fin</label><input type="datetime-local" className={inp} value={inc.fin} onChange={e => setInc({ ...inc, fin: e.target.value })} /></div>
                 <div><label className={lbl}>Causa</label><input className={inp} placeholder="Opcional" value={inc.causa} onChange={e => setInc({ ...inc, causa: e.target.value })} /></div>
-                <div><label className={lbl}>Resolución</label><input className={inp} placeholder="Opcional — cómo se resolvió" value={inc.resolucion} onChange={e => setInc({ ...inc, resolucion: e.target.value })} /></div>
+                <div><label className={lbl}>Origen de la causa</label>
+                  <select className={inp} value={inc.origen_causa} onChange={e => setInc({ ...inc, origen_causa: e.target.value })}>
+                    <option value="">Selecciona…</option>
+                    <option value="Interna">Interna</option>
+                    <option value="Cliente">Cliente</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2"><label className={lbl}>Resolución</label><input className={inp} placeholder="Opcional — cómo se resolvió" value={inc.resolucion} onChange={e => setInc({ ...inc, resolucion: e.target.value })} /></div>
               </div>
               <div className="flex justify-end">
                 <button onClick={addIncidente} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center gap-1.5"><Plus size={16} /> Agregar incidente</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left text-[11px] font-bold text-slate-400 uppercase border-b border-slate-100"><th className="py-2">App</th><th className="py-2">Sede</th><th className="py-2">Inicio</th><th className="py-2">Fin</th><th className="py-2">Causa</th><th className="py-2">Resolución</th><th></th></tr></thead>
+                  <thead><tr className="text-left text-[11px] font-bold text-slate-400 uppercase border-b border-slate-100"><th className="py-2">App</th><th className="py-2">Sede</th><th className="py-2">Inicio</th><th className="py-2">Fin</th><th className="py-2">Causa</th><th className="py-2">Origen</th><th className="py-2">Resolución</th><th></th></tr></thead>
                   <tbody>
-                    {incidentes.length === 0 ? <tr><td colSpan={7} className="py-6 text-center text-slate-400">Sin incidentes en {month}.</td></tr> :
+                    {incidentes.length === 0 ? <tr><td colSpan={8} className="py-6 text-center text-slate-400">Sin incidentes en {month}.</td></tr> :
                       incidentes.map(i => (
                         <tr key={i.id} className="border-b border-slate-50 hover:bg-slate-50/60">
                           <td className="py-2 font-semibold text-slate-700">{i.app_nombre || appName(i.app_id)}</td>
@@ -231,6 +237,9 @@ export default function KpiView({ currentUser }: any) {
                           <td className="py-2 text-slate-600">{fmtDateTime(i.inicio)}</td>
                           <td className="py-2 text-slate-600">{fmtDateTime(i.fin)}</td>
                           <td className="py-2 text-slate-500">{i.causa || '—'}</td>
+                          <td className="py-2">{i.origen_causa
+                            ? <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${i.origen_causa === 'Cliente' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{i.origen_causa}</span>
+                            : <span className="text-slate-400">—</span>}</td>
                           <td className="py-2 text-slate-500">{i.resolucion || '—'}</td>
                           <td className="py-2 text-right"><button onClick={() => delIncidente(i.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-md"><Trash2 size={15} /></button></td>
                         </tr>
@@ -251,7 +260,7 @@ export default function KpiView({ currentUser }: any) {
                     <option value="">Selecciona…</option>{apps.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                   </select>
                 </div>
-                <div><label className={lbl}>Fecha</label><input type="date" className={inp} value={dep.fecha} onChange={e => setDep({ ...dep, fecha: e.target.value })} /></div>
+                <div><label className={lbl}>Fecha y hora</label><input type="datetime-local" className={inp} value={dep.fecha} onChange={e => setDep({ ...dep, fecha: e.target.value })} /></div>
                 <div><label className={lbl}>Resultado</label>
                   <select className={inp} value={dep.resultado} onChange={e => setDep({ ...dep, resultado: e.target.value })}>
                     <option value="Exitoso">Exitoso</option><option value="Fallido">Fallido</option>
@@ -268,7 +277,7 @@ export default function KpiView({ currentUser }: any) {
                       despliegues.map(d => (
                         <tr key={d.id} className="border-b border-slate-50 hover:bg-slate-50/60">
                           <td className="py-2 font-semibold text-slate-700">{d.app_nombre || appName(d.app_id)}</td>
-                          <td className="py-2 text-slate-600">{fmtDate(d.fecha)}</td>
+                          <td className="py-2 text-slate-600">{fmtDateTime(d.fecha)}</td>
                           <td className="py-2">{d.resultado === 'Exitoso'
                             ? <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold"><CheckCircle2 size={14} /> Exitoso</span>
                             : <span className="inline-flex items-center gap-1 text-red-600 font-semibold"><XCircle size={14} /> Fallido</span>}</td>

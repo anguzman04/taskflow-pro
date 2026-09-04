@@ -140,7 +140,7 @@ const kpiController = {
     try {
       const access = await checkAccess(req.userId);
       if (!access.allowed) return res.status(access.status).json({ error: access.error });
-      const { app_id, sede_id, inicio, fin, causa, resolucion } = req.body;
+      const { app_id, sede_id, inicio, fin, causa, origen_causa, resolucion } = req.body;
       if (!app_id || !inicio || !fin) return res.status(400).json({ error: 'Aplicación, inicio y fin son obligatorios' });
       if (new Date(fin) <= new Date(inicio)) return res.status(400).json({ error: 'El fin debe ser posterior al inicio' });
       const item = await prisma.kpiIncidente.create({
@@ -148,7 +148,7 @@ const kpiController = {
           app_id: parseInt(app_id),
           sede_id: sede_id ? parseInt(sede_id) : null,
           inicio: new Date(inicio), fin: new Date(fin),
-          causa: causa?.trim() || null, resolucion: resolucion?.trim() || null,
+          causa: causa?.trim() || null, origen_causa: origen_causa?.trim() || null, resolucion: resolucion?.trim() || null,
           created_by_id: access.user.id,
         }
       });
@@ -160,7 +160,7 @@ const kpiController = {
     try {
       const access = await checkAccess(req.userId);
       if (!access.allowed) return res.status(access.status).json({ error: access.error });
-      const { app_id, sede_id, inicio, fin, causa, resolucion } = req.body;
+      const { app_id, sede_id, inicio, fin, causa, origen_causa, resolucion } = req.body;
       if (inicio && fin && new Date(fin) <= new Date(inicio)) return res.status(400).json({ error: 'El fin debe ser posterior al inicio' });
       const data = {};
       if (app_id !== undefined) data.app_id = parseInt(app_id);
@@ -168,6 +168,7 @@ const kpiController = {
       if (inicio !== undefined) data.inicio = new Date(inicio);
       if (fin !== undefined) data.fin = new Date(fin);
       if (causa !== undefined) data.causa = causa?.trim() || null;
+      if (origen_causa !== undefined) data.origen_causa = origen_causa?.trim() || null;
       if (resolucion !== undefined) data.resolucion = resolucion?.trim() || null;
       const item = await prisma.kpiIncidente.update({ where: { id: parseInt(req.params.id) }, data });
       res.json(item);

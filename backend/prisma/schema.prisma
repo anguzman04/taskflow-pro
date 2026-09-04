@@ -316,6 +316,7 @@ model KpiIncidente {
   inicio        DateTime
   fin           DateTime
   causa         String?
+  origen_causa  String?   // "Interna" | "Cliente"
   resolucion    String?
   created_by_id Int?
   created_at    DateTime @default(now())
