@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-08-06_
+_Última actualización: 2026-09-04_
 
 ---
 
@@ -569,6 +569,42 @@ Complementa la columna "Fecha Último Avance" (sección 31.b): además de la fec
 - Verificado contra la BD real: 99 tareas traen el texto correctamente.
 
 - **Commit:** `c181a0b` en `main`. Despliegue: **backend + frontend** (`git pull` → `npm run build` + reiniciar Node). Sin `npm install` ni `db push`.
+
+---
+
+## Completado en sesión 2026-09-04
+
+### 33. Columnas "Fecha Creación" y "Fecha Inicio" en el Excel (+ fix de columnas >26)
+
+Se agregan al listado del reporte, antes de "Fecha Compromiso" (quedan cronológicas: Creación → Inicio → Compromiso → Cierre → Último Avance), usando `fecha_registro` y `fecha_inicio` que ya devuelve `getAll` (sin cambio de backend), formato `DD/MM/YYYY`.
+
+- **Fix latente importante:** el cálculo de la última columna usaba `String.fromCharCode(64 + N)`, que solo funciona hasta la Z (26 columnas); con 28 columnas se rompía (merge/autofiltro con un carácter inválido). Se reemplazó por un conversor de nº→letra que soporta AA/AB/… (la 28ª = `AB`, verificado con ExcelJS).
+- **Commit:** `53660bf` en `main`. Frontend puro.
+
+### 34. Fix: la fecha de cierre no se estampaba al crear una tarea ya cerrada
+
+Si una tarea se creaba directamente en **Completado/Cancelado** desde el formulario, salía **sin "Fecha de Cierre"** en el reporte, porque `create` no estampaba `fecha_ejecucion` (solo lo hacían `update`/`quickUpdate`/cancelar desde Control). Ahora `create` detecta si el estado inicial es cerrado (`esEstadoCerrado`) y estampa `fecha_ejecucion = now` + deja rastro en `AuditLog`. Aplica hacia adelante (no se hizo backfill de las históricas, por decisión del usuario).
+
+- **Commit:** `d93f8e5` en `main`. Backend puro (reiniciar Node).
+
+### 35. MÓDULO NUEVO: Indicadores (KPI) — SAPP-01 y SAPP-02
+
+Módulo nuevo gateado por permiso **`perm_kpi`** para **registrar eventos y calcular métricas** de KPIs mensuales. Arranca con 2 (extensible):
+- **SAPP-01 Disponibilidad:** `((Tiempo total − Tiempo inactividad)/Tiempo total)×100`. Tiempo total = **24×7** (días del mes × 1440 min); inactividad = suma de caídas recortadas al mes.
+- **SAPP-02 Éxito de despliegue:** `Releases exitosos / Releases ejecutados ×100`.
+
+**Decisiones:** registrar eventos (el sistema calcula), Tiempo total 24×7, mostrar **global Y por aplicación**.
+
+**Backend (Prisma + `kpiController` + rutas `/api/kpi/*`):**
+- Modelos `KpiApp` (catálogo de apps críticas), `KpiSede` (catálogo de sedes), `KpiIncidente` (caídas: app, sede, inicio, fin, causa, **origen_causa** Interna/Cliente, resolución), `KpiDespliegue` (releases: app, fecha+hora, resultado Exitoso/Fallido, descripción). Permiso `perm_kpi` en `User`. Catálogos con borrado lógico.
+- CRUD de apps/sedes/incidentes/despliegues + `GET /kpi/metrics?month=YYYY-MM` que calcula por mes global + por app. Acceso `is_admin || perm_kpi`.
+
+**Frontend (`KpiView.tsx` + integración en Dashboard):**
+- Pestaña **Tablero**: selector de mes → tarjetas KPI global (coloreadas por umbral) + tabla de desglose por app + fórmulas al pie.
+- Pestaña **Registro**: formularios+tablas de incidentes (con selector de Sede, Origen de la causa, y Resolución) y despliegues (fecha+hora), + modales de catálogo de **Apps** y **Sedes**.
+- Sidebar "Indicadores (KPI)" gateado por `perm_kpi||is_admin` + checkbox de permiso en el form de usuario. Usa `fetch('/api/...')` relativo.
+
+**Estado:** todo ✅ verificado e2e y **desplegado en producción** (varias iteraciones). **Commits:** `eb892fd` (BD+backend), `1f40b72` (frontend), `1779850` (sede + resolución + catálogo sedes), `a54485e` (origen de la causa + hora en despliegues). El `db push` ya está aplicado en la BD compartida; desplegar = `git pull` → `npm run build` + `npx prisma generate` + reiniciar Node (sin `npm install`). Ver [[taskflow-kpi-module]] en memoria.
 
 ---
 
