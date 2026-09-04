@@ -1529,6 +1529,8 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       { key: 'gerente',            width: 22, header: 'Gerente Responsable' },
       { key: 'tipo',               width: 18, header: 'Tipo' },
       { key: 'estado',             width: 14, header: 'Estado' },
+      { key: 'fechaRegistro',      width: 16, header: 'Fecha Creación' },
+      { key: 'fechaInicio',        width: 16, header: 'Fecha Inicio' },
       { key: 'fechaFin',           width: 16, header: 'Fecha Compromiso' },
       { key: 'fechaCierre',        width: 16, header: 'Fecha de Cierre' },
       { key: 'ultimoAvance',       width: 18, header: 'Fecha Último Avance' },
@@ -1549,7 +1551,9 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       { key: 'observaciones',      width: 50, header: 'Observaciones' },
     ];
     const NCOLS = COLS.length;
-    const LAST_COL = String.fromCharCode(64 + NCOLS);
+    // Convierte nº de columna a letra Excel (soporta >26: AA, AB, ...).
+    const colLetter = (n: number) => { let s = ''; while (n > 0) { s = String.fromCharCode(65 + (n - 1) % 26) + s; n = Math.floor((n - 1) / 26); } return s; };
+    const LAST_COL = colLetter(NCOLS);
     ws1.columns = COLS.map(c => ({ key: c.key, width: c.width }));
 
     // Fila 1: Título
@@ -1589,6 +1593,8 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       const isOverdue = overdueDays > 0;
       const rowBg = isOverdue ? 'FFfff1f2' : idx % 2 === 0 ? 'FFfafafa' : 'FFFFFFFF';
       const fechaDate = task.fecha_fin ? new Date(String(task.fecha_fin).split('T')[0] + 'T00:00:00') : null;
+      const fechaRegistroDate = task.fecha_registro ? new Date(String(task.fecha_registro).split('T')[0] + 'T00:00:00') : null;
+      const fechaInicioDate = task.fecha_inicio ? new Date(String(task.fecha_inicio).split('T')[0] + 'T00:00:00') : null;
       const fechaCierreDate = (task as any).fecha_ejecucion ? new Date(String((task as any).fecha_ejecucion).split('T')[0] + 'T00:00:00') : null;
       const ultimoAvanceDate = (task as any).ultimo_avance ? new Date(String((task as any).ultimo_avance).split('T')[0] + 'T00:00:00') : null;
       const totalSub = task.subtasks?.length || 0;
@@ -1604,6 +1610,8 @@ const handleDeleteEvidence = async (evidenceId: number) => {
         gerente: task.gerente_responsable || 'Sin Asignar',
         tipo: task.tipo || '-',
         estado: task.estado,
+        fechaRegistro: fechaRegistroDate,
+        fechaInicio: fechaInicioDate,
         fechaFin: fechaDate,
         fechaCierre: fechaCierreDate,
         ultimoAvance: ultimoAvanceDate,
@@ -1647,6 +1655,16 @@ const handleDeleteEvidence = async (evidenceId: number) => {
       aCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
       // Fecha: formato fecha real
+      if (fechaRegistroDate) {
+        const c = row.getCell('fechaRegistro');
+        c.numFmt = 'DD/MM/YYYY';
+        c.alignment = { horizontal: 'center', vertical: 'middle' };
+      }
+      if (fechaInicioDate) {
+        const c = row.getCell('fechaInicio');
+        c.numFmt = 'DD/MM/YYYY';
+        c.alignment = { horizontal: 'center', vertical: 'middle' };
+      }
       if (fechaDate) {
         const fCell = row.getCell('fechaFin');
         fCell.numFmt = 'DD/MM/YYYY';
