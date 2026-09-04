@@ -296,19 +296,33 @@ model KpiApp {
   despliegues KpiDespliegue[]
 }
 
+// Catálogo de sedes donde puede presentarse un incidente.
+model KpiSede {
+  id         Int      @id @default(autoincrement())
+  nombre     String
+  activo     Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  incidentes KpiIncidente[]
+}
+
 // Incidente de indisponibilidad (para SAPP-01: Disponibilidad).
 // El tiempo de inactividad = fin - inicio; se suma por mes/app.
 model KpiIncidente {
   id            Int      @id @default(autoincrement())
   app_id        Int
+  sede_id       Int?
   inicio        DateTime
   fin           DateTime
   causa         String?
+  resolucion    String?
   created_by_id Int?
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
-  app KpiApp @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  app  KpiApp   @relation(fields: [app_id], references: [id], onDelete: Cascade)
+  sede KpiSede? @relation(fields: [sede_id], references: [id], onDelete: SetNull)
 }
 
 // Despliegue / release (para SAPP-02: Tasa de éxito de despliegue).

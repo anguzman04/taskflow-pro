@@ -72,6 +72,55 @@ const kpiController = {
     }
   },
 
+  // ---------- Catálogo de sedes ----------
+  listSedes: async (req, res) => {
+    try {
+      const access = await checkAccess(req.userId);
+      if (!access.allowed) return res.status(access.status).json({ error: access.error });
+      const sedes = await prisma.kpiSede.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } });
+      res.json(sedes);
+    } catch (e) { console.error('Error listSedes:', e); res.status(500).json({ error: 'Error al listar sedes' }); }
+  },
+
+  createSede: async (req, res) => {
+    try {
+      const access = await checkAccess(req.userId);
+      if (!access.allowed) return res.status(access.status).json({ error: access.error });
+      const { nombre } = req.body;
+      if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es obligatorio' });
+      const sede = await prisma.kpiSede.create({ data: { nombre: nombre.trim() } });
+      res.status(201).json(sede);
+    } catch (e) { console.error('Error createSede:', e); res.status(500).json({ error: 'Error al crear la sede' }); }
+  },
+
+  updateSede: async (req, res) => {
+    try {
+      const access = await checkAccess(req.userId);
+      if (!access.allowed) return res.status(access.status).json({ error: access.error });
+      const { nombre, activo } = req.body;
+      const data = {};
+      if (nombre !== undefined) { if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es obligatorio' }); data.nombre = nombre.trim(); }
+      if (activo !== undefined) data.activo = !!activo;
+      const sede = await prisma.kpiSede.update({ where: { id: parseInt(req.params.id) }, data });
+      res.json(sede);
+    } catch (e) {
+      if (e.code === 'P2025') return res.status(404).json({ error: 'Sede no encontrada' });
+      console.error('Error updateSede:', e); res.status(500).json({ error: 'Error al actualizar la sede' });
+    }
+  },
+
+  deleteSede: async (req, res) => {
+    try {
+      const access = await checkAccess(req.userId);
+      if (!access.allowed) return res.status(access.status).json({ error: access.error });
+      await prisma.kpiSede.update({ where: { id: parseInt(req.params.id) }, data: { activo: false } });
+      res.json({ message: 'Sede desactivada' });
+    } catch (e) {
+      if (e.code === 'P2025') return res.status(404).json({ error: 'Sede no encontrada' });
+      console.error('Error deleteSede:', e); res.status(500).json({ error: 'Error al eliminar la sede' });
+    }
+  },
+
   // ---------- Incidentes de indisponibilidad (SAPP-01) ----------
   listIncidentes: async (req, res) => {
     try {
@@ -81,9 +130,9 @@ const kpiController = {
       const range = req.query.month ? monthRange(req.query.month) : null;
       if (range) where.AND = [{ inicio: { lt: range.end } }, { fin: { gt: range.start } }]; // solapan el mes
       const items = await prisma.kpiIncidente.findMany({
-        where, orderBy: { inicio: 'desc' }, include: { app: { select: { nombre: true } } }
+        where, orderBy: { inicio: 'desc' }, include: { app: { select: { nombre: true } }, sede: { select: { nombre: true } } }
       });
-      res.json(items.map(i => ({ ...i, app_nombre: i.app?.nombre, app: undefined })));
+      res.json(items.map(i => ({ ...i, app_nombre: i.app?.nombre, sede_nombre: i.sede?.nombre || null, app: undefined, sede: undefined })));
     } catch (e) { console.error('Error listIncidentes:', e); res.status(500).json({ error: 'Error al listar incidentes' }); }
   },
 
@@ -91,11 +140,17 @@ const kpiController = {
     try {
       const access = await checkAccess(req.userId);
       if (!access.allowed) return res.status(access.status).json({ error: access.error });
-      const { app_id, inicio, fin, causa } = req.body;
+      const { app_id, sede_id, inicio, fin, causa, resolucion } = req.body;
       if (!app_id || !inicio || !fin) return res.status(400).json({ error: 'Aplicación, inicio y fin son obligatorios' });
       if (new Date(fin) <= new Date(inicio)) return res.status(400).json({ error: 'El fin debe ser posterior al inicio' });
       const item = await prisma.kpiIncidente.create({
-        data: { app_id: parseInt(app_id), inicio: new Date(inicio), fin: new Date(fin), causa: causa?.trim() || null, created_by_id: access.user.id }
+        data: {
+          app_id: parseInt(app_id),
+          sede_id: sede_id ? parseInt(sede_id) : null,
+          inicio: new Date(inicio), fin: new Date(fin),
+          causa: causa?.trim() || null, resolucion: resolucion?.trim() || null,
+          created_by_id: access.user.id,
+        }
       });
       res.status(201).json(item);
     } catch (e) { console.error('Error createIncidente:', e); res.status(500).json({ error: 'Error al crear el incidente' }); }
@@ -105,13 +160,15 @@ const kpiController = {
     try {
       const access = await checkAccess(req.userId);
       if (!access.allowed) return res.status(access.status).json({ error: access.error });
-      const { app_id, inicio, fin, causa } = req.body;
+      const { app_id, sede_id, inicio, fin, causa, resolucion } = req.body;
       if (inicio && fin && new Date(fin) <= new Date(inicio)) return res.status(400).json({ error: 'El fin debe ser posterior al inicio' });
       const data = {};
       if (app_id !== undefined) data.app_id = parseInt(app_id);
+      if (sede_id !== undefined) data.sede_id = sede_id ? parseInt(sede_id) : null;
       if (inicio !== undefined) data.inicio = new Date(inicio);
       if (fin !== undefined) data.fin = new Date(fin);
       if (causa !== undefined) data.causa = causa?.trim() || null;
+      if (resolucion !== undefined) data.resolucion = resolucion?.trim() || null;
       const item = await prisma.kpiIncidente.update({ where: { id: parseInt(req.params.id) }, data });
       res.json(item);
     } catch (e) {

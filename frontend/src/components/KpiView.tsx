@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Plus, Trash2, X, Server, AlertTriangle, Rocket, TrendingUp, Settings2, CheckCircle2, XCircle,
+  Plus, Trash2, X, Server, AlertTriangle, Rocket, TrendingUp, Settings2, CheckCircle2, XCircle, MapPin,
 } from 'lucide-react';
 
 // --- Cliente HTTP: rutas relativas /api (window.fetch está parcheado en Dashboard
@@ -30,12 +30,16 @@ export default function KpiView({ currentUser }: any) {
   const [metrics, setMetrics] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [showApps, setShowApps] = useState(false);
+  const [sedes, setSedes] = useState<any[]>([]);
+  const [showSedes, setShowSedes] = useState(false);
+  const [nuevaSede, setNuevaSede] = useState('');
 
   const [nuevaApp, setNuevaApp] = useState('');
-  const [inc, setInc] = useState({ app_id: '', inicio: '', fin: '', causa: '' });
+  const [inc, setInc] = useState({ app_id: '', sede_id: '', inicio: '', fin: '', causa: '', resolucion: '' });
   const [dep, setDep] = useState({ app_id: '', fecha: '', resultado: 'Exitoso', descripcion: '' });
 
   const fetchApps = async () => { try { setApps(await jget('/api/kpi/apps')); } catch (e) { console.error(e); } };
+  const fetchSedes = async () => { try { setSedes(await jget('/api/kpi/sedes')); } catch (e) { console.error(e); } };
   const fetchMonthData = async () => {
     setLoading(true);
     try {
@@ -49,7 +53,7 @@ export default function KpiView({ currentUser }: any) {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchApps(); }, []);
+  useEffect(() => { fetchApps(); fetchSedes(); }, []);
   useEffect(() => { fetchMonthData(); /* eslint-disable-next-line */ }, [month]);
 
   // --- Catálogo de apps ---
@@ -63,11 +67,22 @@ export default function KpiView({ currentUser }: any) {
     try { await jsend(`/api/kpi/apps/${id}`, 'DELETE'); await fetchApps(); await fetchMonthData(); } catch (e) { console.error(e); }
   };
 
+  // --- Catálogo de sedes ---
+  const addSede = async () => {
+    if (!nuevaSede.trim()) return;
+    try { await jsend('/api/kpi/sedes', 'POST', { nombre: nuevaSede.trim() }); setNuevaSede(''); await fetchSedes(); }
+    catch (e) { console.error(e); alert('No se pudo agregar la sede.'); }
+  };
+  const delSede = async (id: number) => {
+    if (!window.confirm('¿Desactivar esta sede? Su histórico se conserva.')) return;
+    try { await jsend(`/api/kpi/sedes/${id}`, 'DELETE'); await fetchSedes(); } catch (e) { console.error(e); }
+  };
+
   // --- Incidentes ---
   const addIncidente = async () => {
     if (!inc.app_id || !inc.inicio || !inc.fin) { alert('Aplicación, inicio y fin son obligatorios.'); return; }
     if (new Date(inc.fin) <= new Date(inc.inicio)) { alert('El fin debe ser posterior al inicio.'); return; }
-    try { await jsend('/api/kpi/incidentes', 'POST', inc); setInc({ app_id: '', inicio: '', fin: '', causa: '' }); await fetchMonthData(); }
+    try { await jsend('/api/kpi/incidentes', 'POST', inc); setInc({ app_id: '', sede_id: '', inicio: '', fin: '', causa: '', resolucion: '' }); await fetchMonthData(); }
     catch (e) { console.error(e); alert('No se pudo registrar el incidente.'); }
   };
   const delIncidente = async (id: number) => {
@@ -171,8 +186,11 @@ export default function KpiView({ currentUser }: any) {
       {/* ================= REGISTRO ================= */}
       {tab === 'registro' && (
         <div className="space-y-6">
-          {/* Botón catálogo de apps */}
-          <div className="flex justify-end">
+          {/* Catálogos */}
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowSedes(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all">
+              <MapPin size={16} /> Sedes ({sedes.length})
+            </button>
             <button onClick={() => setShowApps(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all">
               <Settings2 size={16} /> Aplicaciones ({apps.length})
             </button>
@@ -182,28 +200,38 @@ export default function KpiView({ currentUser }: any) {
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
             <div className="px-5 py-3 bg-slate-800 text-white text-sm font-bold uppercase tracking-wide flex items-center gap-2"><AlertTriangle size={16} /> Incidentes de indisponibilidad (SAPP-01)</div>
             <div className="p-5 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-[1.2fr_1fr_1fr_1.4fr_auto] gap-3 items-end">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div><label className={lbl}>Aplicación</label>
                   <select className={inp} value={inc.app_id} onChange={e => setInc({ ...inc, app_id: e.target.value })}>
                     <option value="">Selecciona…</option>{apps.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
                   </select>
                 </div>
+                <div><label className={lbl}>Sede</label>
+                  <select className={inp} value={inc.sede_id} onChange={e => setInc({ ...inc, sede_id: e.target.value })}>
+                    <option value="">Sin sede / Selecciona…</option>{sedes.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                  </select>
+                </div>
                 <div><label className={lbl}>Inicio</label><input type="datetime-local" className={inp} value={inc.inicio} onChange={e => setInc({ ...inc, inicio: e.target.value })} /></div>
                 <div><label className={lbl}>Fin</label><input type="datetime-local" className={inp} value={inc.fin} onChange={e => setInc({ ...inc, fin: e.target.value })} /></div>
                 <div><label className={lbl}>Causa</label><input className={inp} placeholder="Opcional" value={inc.causa} onChange={e => setInc({ ...inc, causa: e.target.value })} /></div>
-                <button onClick={addIncidente} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center gap-1.5"><Plus size={16} /> Agregar</button>
+                <div><label className={lbl}>Resolución</label><input className={inp} placeholder="Opcional — cómo se resolvió" value={inc.resolucion} onChange={e => setInc({ ...inc, resolucion: e.target.value })} /></div>
+              </div>
+              <div className="flex justify-end">
+                <button onClick={addIncidente} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center gap-1.5"><Plus size={16} /> Agregar incidente</button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="text-left text-[11px] font-bold text-slate-400 uppercase border-b border-slate-100"><th className="py-2">App</th><th className="py-2">Inicio</th><th className="py-2">Fin</th><th className="py-2">Causa</th><th></th></tr></thead>
+                  <thead><tr className="text-left text-[11px] font-bold text-slate-400 uppercase border-b border-slate-100"><th className="py-2">App</th><th className="py-2">Sede</th><th className="py-2">Inicio</th><th className="py-2">Fin</th><th className="py-2">Causa</th><th className="py-2">Resolución</th><th></th></tr></thead>
                   <tbody>
-                    {incidentes.length === 0 ? <tr><td colSpan={5} className="py-6 text-center text-slate-400">Sin incidentes en {month}.</td></tr> :
+                    {incidentes.length === 0 ? <tr><td colSpan={7} className="py-6 text-center text-slate-400">Sin incidentes en {month}.</td></tr> :
                       incidentes.map(i => (
                         <tr key={i.id} className="border-b border-slate-50 hover:bg-slate-50/60">
                           <td className="py-2 font-semibold text-slate-700">{i.app_nombre || appName(i.app_id)}</td>
+                          <td className="py-2 text-slate-600">{i.sede_nombre || '—'}</td>
                           <td className="py-2 text-slate-600">{fmtDateTime(i.inicio)}</td>
                           <td className="py-2 text-slate-600">{fmtDateTime(i.fin)}</td>
                           <td className="py-2 text-slate-500">{i.causa || '—'}</td>
+                          <td className="py-2 text-slate-500">{i.resolucion || '—'}</td>
                           <td className="py-2 text-right"><button onClick={() => delIncidente(i.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-md"><Trash2 size={15} /></button></td>
                         </tr>
                       ))}
@@ -275,6 +303,33 @@ export default function KpiView({ currentUser }: any) {
                     <div key={a.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-slate-50">
                       <span className="text-sm font-semibold text-slate-800">{a.nombre}</span>
                       <button onClick={() => delApp(a.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-md" title="Desactivar"><Trash2 size={14} /></button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal catálogo de sedes */}
+      {showSedes && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowSedes(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-800 flex items-center gap-2"><MapPin size={18} /> Sedes</h3>
+              <button onClick={() => setShowSedes(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto">
+              <div className="flex gap-2">
+                <input className={inp} placeholder="Nombre de la sede" value={nuevaSede} onChange={e => setNuevaSede(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') addSede(); }} />
+                <button onClick={addSede} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 whitespace-nowrap">Agregar</button>
+              </div>
+              <div className="border-t border-slate-100 pt-3 space-y-1">
+                {sedes.length === 0 ? <p className="text-sm text-slate-400 text-center py-4">Aún no hay sedes.</p> :
+                  sedes.map(s => (
+                    <div key={s.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-slate-50">
+                      <span className="text-sm font-semibold text-slate-800">{s.nombre}</span>
+                      <button onClick={() => delSede(s.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-md" title="Desactivar"><Trash2 size={14} /></button>
                     </div>
                   ))}
               </div>
