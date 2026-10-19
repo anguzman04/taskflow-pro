@@ -234,7 +234,7 @@ const Login = () => {
               )}
 
               {/* --- OPCIÓN PRINCIPAL: Microsoft --- */}
-              {ssoEnabled && (
+              {ssoEnabled && !showAccessForm && (
                 <button
                   type="button"
                   onClick={handleMicrosoftLogin}
@@ -249,7 +249,7 @@ const Login = () => {
               )}
 
               {/* --- ENLACE DISCRETO HACIA EL LOGIN LOCAL --- */}
-              {ssoEnabled && !showLocalLogin && (
+              {ssoEnabled && !showLocalLogin && !showAccessForm && (
                 <div className="text-center mt-5">
                   <button
                     type="button"
@@ -263,7 +263,7 @@ const Login = () => {
 
               {/* --- LOGIN LOCAL (secundario, colapsable) --- */}
               <AnimatePresence initial={false}>
-                {localLoginVisible && (
+                {localLoginVisible && !showAccessForm && (
                   <motion.div
                     key="local-login"
                     initial={{ opacity: 0, height: 0 }}
@@ -342,8 +342,8 @@ const Login = () => {
                       <input type="text" required placeholder="Nombre completo *" value={accessForm.nombre} onChange={(e) => setAccessForm({ ...accessForm, nombre: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
                       <input type="email" required placeholder="Correo *" value={accessForm.email} onChange={(e) => setAccessForm({ ...accessForm, email: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
                       <div className="grid grid-cols-2 gap-3">
-                        <input type="text" placeholder="Cargo" value={accessForm.cargo} onChange={(e) => setAccessForm({ ...accessForm, cargo: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
-                        <input type="text" placeholder="Área" value={accessForm.area} onChange={(e) => setAccessForm({ ...accessForm, area: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
+                        <input type="text" placeholder="Cargo (opcional)" value={accessForm.cargo} onChange={(e) => setAccessForm({ ...accessForm, cargo: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
+                        <input type="text" placeholder="Área (opcional)" value={accessForm.area} onChange={(e) => setAccessForm({ ...accessForm, area: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
                       </div>
                       <textarea rows={2} placeholder="¿Para qué necesitas acceso? (opcional)" value={accessForm.justificacion} onChange={(e) => setAccessForm({ ...accessForm, justificacion: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
                       <div className="flex gap-2 pt-1">
