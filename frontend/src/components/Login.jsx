@@ -29,6 +29,11 @@ const Login = () => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // Solicitud de acceso (auto-registro con aprobación del admin)
+  const [showAccessForm, setShowAccessForm] = useState(false);
+  const [accessMsg, setAccessMsg] = useState('');
+  const [accessForm, setAccessForm] = useState({ nombre: '', email: '', cargo: '', area: '', justificacion: '' });
+
   // Intercambia el idToken de Microsoft por la sesión propia de la app.
   const exchangeMicrosoftToken = async (idToken) => {
     setIsLoading(true);
@@ -39,6 +44,14 @@ const Login = () => {
         body: JSON.stringify({ idToken })
       });
       const data = await res.json();
+
+      // La cuenta Microsoft es válida pero no está registrada: el backend creó una
+      // solicitud de acceso. Mostramos el aviso en vez de un error.
+      if (data.accessRequested) {
+        setAccessMsg(data.message || 'Tu cuenta no está registrada. Se envió una solicitud de acceso al administrador.');
+        setIsLoading(false);
+        return;
+      }
 
       if (res.ok && data.token) {
         localStorage.setItem('token', data.token);
@@ -120,6 +133,32 @@ const Login = () => {
     }
   };
 
+  const handleAccessRequest = async (e) => {
+    e.preventDefault();
+    if (!accessForm.nombre.trim() || !accessForm.email.trim()) { alert('Nombre y correo son obligatorios.'); return; }
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/access-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(accessForm)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setAccessMsg(data.message || 'Tu solicitud de acceso fue enviada al administrador.');
+        setShowAccessForm(false);
+        setAccessForm({ nombre: '', email: '', cargo: '', area: '', justificacion: '' });
+      } else {
+        alert(data.error || 'No se pudo enviar la solicitud.');
+      }
+    } catch (error) {
+      console.error('Error enviando solicitud de acceso:', error);
+      alert('Error de conexión con el servidor.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handlePasswordChangeSubmit = async (e) => {
     e.preventDefault();
     
@@ -186,6 +225,13 @@ const Login = () => {
               </div>
               <h2 className="text-2xl font-bold text-slate-900 text-center mb-2">TaskFlow Pro</h2>
               <p className="text-slate-500 text-center mb-8">Inicia sesión para continuar</p>
+
+              {/* Aviso de solicitud de acceso enviada */}
+              {accessMsg && !showAccessForm && (
+                <div className="mb-6 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 text-center">
+                  {accessMsg}
+                </div>
+              )}
 
               {/* --- OPCIÓN PRINCIPAL: Microsoft --- */}
               {ssoEnabled && (
@@ -263,6 +309,47 @@ const Login = () => {
                       >
                         {isLoading ? 'Verificando...' : 'Iniciar Sesión'}
                       </button>
+                    </form>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Solicitar acceso (auto-registro con aprobación) */}
+              {!showAccessForm && (
+                <div className="text-center mt-5">
+                  <button
+                    type="button"
+                    onClick={() => { setShowAccessForm(true); setAccessMsg(''); }}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-bold transition-colors underline-offset-2 hover:underline"
+                  >
+                    ¿No tienes cuenta? Solicitar acceso
+                  </button>
+                </div>
+              )}
+
+              <AnimatePresence initial={false}>
+                {showAccessForm && (
+                  <motion.div
+                    key="access-form"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="overflow-hidden"
+                  >
+                    <form onSubmit={handleAccessRequest} className="space-y-3 pt-5 mt-5 border-t border-slate-100">
+                      <p className="text-xs text-slate-500 text-center">Completa tus datos y el administrador revisará tu solicitud.</p>
+                      <input type="text" required placeholder="Nombre completo *" value={accessForm.nombre} onChange={(e) => setAccessForm({ ...accessForm, nombre: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
+                      <input type="email" required placeholder="Correo *" value={accessForm.email} onChange={(e) => setAccessForm({ ...accessForm, email: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
+                      <div className="grid grid-cols-2 gap-3">
+                        <input type="text" placeholder="Cargo" value={accessForm.cargo} onChange={(e) => setAccessForm({ ...accessForm, cargo: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
+                        <input type="text" placeholder="Área" value={accessForm.area} onChange={(e) => setAccessForm({ ...accessForm, area: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
+                      </div>
+                      <textarea rows={2} placeholder="¿Para qué necesitas acceso? (opcional)" value={accessForm.justificacion} onChange={(e) => setAccessForm({ ...accessForm, justificacion: e.target.value })} className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 text-sm" />
+                      <div className="flex gap-2 pt-1">
+                        <button type="button" onClick={() => setShowAccessForm(false)} className="flex-1 bg-white border border-slate-300 text-slate-600 py-2.5 rounded-xl font-bold hover:bg-slate-50 transition-all text-sm">Cancelar</button>
+                        <button type="submit" disabled={isLoading} className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-sm disabled:opacity-50 text-sm">{isLoading ? 'Enviando...' : 'Enviar solicitud'}</button>
+                      </div>
                     </form>
                   </motion.div>
                 )}

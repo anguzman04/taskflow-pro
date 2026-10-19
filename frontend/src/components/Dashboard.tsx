@@ -8,7 +8,7 @@ import {
   Download, Upload, FolderKanban, CheckSquare, Square, ListChecks,
   PieChart as PieChartIconLucide, TrendingUp, Activity, FilterX, Lock, Columns,
   PlayCircle, Reply, Tag, GripVertical, Trophy, Medal, Menu, ChevronLeft, ChevronRight,
-  Link2, ExternalLink, NotebookPen, GanttChartSquare, ClipboardCheck
+  Link2, ExternalLink, NotebookPen, GanttChartSquare, ClipboardCheck, UserPlus
 } from 'lucide-react';
 import { motion, AnimatePresence, Reorder } from 'motion/react';
 import { PieChart as PieChartIcon, BarChart3 } from 'lucide-react';
@@ -18,6 +18,7 @@ import { saveAs } from 'file-saver';
 import MultiSelect from './MultiSelect';
 import ChangeControlView from './ChangeControlView';
 import KpiView from './KpiView';
+import AccessRequestsView from './AccessRequestsView';
 
 // Opciones de prioridad reutilizadas por los filtros multi-selección.
 const PRIORITY_OPTIONS = [
@@ -275,7 +276,7 @@ const ChartsSection = ({ data }: { data: any[] }) => {
   );
 };
 
-type View = 'tasks' | 'users' | 'areas' | 'control' | 'projects' | 'reports' | 'gantt' | 'changecontrol' | 'kpi';
+type View = 'tasks' | 'users' | 'areas' | 'control' | 'projects' | 'reports' | 'gantt' | 'changecontrol' | 'kpi' | 'accessrequests';
 type DetailsTab = 'comments' | 'attachments' | 'subtasks';
 
 export default function App() {
@@ -437,6 +438,13 @@ export default function App() {
   const canViewGantt = currentUser?.is_admin || (currentUser as any)?.perm_gantt_view;
   const canViewChangeControl = currentUser?.is_admin || (currentUser as any)?.perm_change_control;
   const canViewKpi = currentUser?.is_admin || (currentUser as any)?.perm_kpi;
+  const canManageAccess = currentUser?.is_admin || (currentUser as any)?.perm_users_create;
+  const [pendingAccessCount, setPendingAccessCount] = useState(0);
+  const fetchPendingAccessCount = async () => {
+    try { const res = await fetch('/api/access-requests?estado=pendiente'); if (res.ok) { const d = await res.json(); setPendingAccessCount(Array.isArray(d) ? d.length : 0); } }
+    catch (e) { /* silencioso */ }
+  };
+  useEffect(() => { if (canManageAccess) fetchPendingAccessCount(); /* eslint-disable-next-line */ }, [canManageAccess]);
 
   // Estado local de la vista Cronograma / Gantt
   const [ganttScale, setGanttScale] = useState<'week' | 'month' | 'quarter'>('month');
@@ -3098,6 +3106,7 @@ case 'responsable':
           {canViewGantt && <button onClick={() => { setCurrentView('gantt'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Cronograma (Gantt)" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'gantt' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><GanttChartSquare size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Cronograma</span></button>}
           {canViewChangeControl && <button onClick={() => { setCurrentView('changecontrol'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Control de Cambios" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'changecontrol' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><ClipboardCheck size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Control de Cambios</span></button>}
           {canViewKpi && <button onClick={() => { setCurrentView('kpi'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Indicadores (KPI)" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'kpi' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><TrendingUp size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Indicadores (KPI)</span></button>}
+          {canManageAccess && <button onClick={() => { setCurrentView('accessrequests'); fetchPendingAccessCount(); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Solicitudes de acceso" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'accessrequests' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><UserPlus size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Solicitudes de acceso</span>{pendingAccessCount > 0 && <span className="ml-auto text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 min-w-[18px] text-center">{pendingAccessCount}</span>}</button>}
           {canViewUsers && <button onClick={() => { setCurrentView('users'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de Usuarios" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'users' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Users size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de Usuarios</span></button>}
           {canViewAreas && <button onClick={() => { setCurrentView('areas'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Gestión de áreas" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'areas' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><Building2 size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Gestión de áreas</span></button>}
           {(currentUser?.acceso_supervision || currentUser?.is_admin) && <button onClick={() => { setCurrentView('control'); if(window.innerWidth < 768) setIsSidebarOpen(false); }} title="Control de Gestión" className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${isSidebarCollapsed ? 'md:justify-center md:px-0' : ''} ${currentView === 'control' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}><LayoutDashboard size={18} className="shrink-0" /> <span className={isSidebarCollapsed ? 'md:hidden' : ''}>Control de Gestión</span></button>}
@@ -3156,6 +3165,11 @@ case 'responsable':
                     <>
                       <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 capitalize truncate">Indicadores (KPI)</h2>
                       <p className="text-slate-500 text-xs sm:text-sm truncate">Registro de eventos y cálculo de métricas SAPP</p>
+                    </>
+                  ) : currentView === 'accessrequests' ? (
+                    <>
+                      <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-slate-900 capitalize truncate">Solicitudes de Acceso</h2>
+                      <p className="text-slate-500 text-xs sm:text-sm truncate">Aprueba o rechaza quién puede ingresar a TaskFlow</p>
                     </>
                   ) : (
                     <>
@@ -3302,6 +3316,7 @@ case 'responsable':
           {currentView === 'gantt' && renderGanttView()}
           {currentView === 'changecontrol' && <ChangeControlView currentUser={currentUser} />}
           {currentView === 'kpi' && <KpiView currentUser={currentUser} />}
+          {currentView === 'accessrequests' && <AccessRequestsView onResolved={fetchPendingAccessCount} />}
 
           {currentView === 'tasks' && (
             <>
