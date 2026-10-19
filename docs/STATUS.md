@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-09-04_
+_Última actualización: 2026-10-19_
 
 ---
 
@@ -605,6 +605,39 @@ Módulo nuevo gateado por permiso **`perm_kpi`** para **registrar eventos y calc
 - Sidebar "Indicadores (KPI)" gateado por `perm_kpi||is_admin` + checkbox de permiso en el form de usuario. Usa `fetch('/api/...')` relativo.
 
 **Estado:** todo ✅ verificado e2e y **desplegado en producción** (varias iteraciones). **Commits:** `eb892fd` (BD+backend), `1f40b72` (frontend), `1779850` (sede + resolución + catálogo sedes), `a54485e` (origen de la causa + hora en despliegues). El `db push` ya está aplicado en la BD compartida; desplegar = `git pull` → `npm run build` + `npx prisma generate` + reiniciar Node (sin `npm install`). Ver [[taskflow-kpi-module]] en memoria.
+
+---
+
+## Completado en sesión 2026-10-19
+
+### 36. MÓDULO NUEVO: Solicitudes de acceso (auto-registro con aprobación)
+
+En vez de crear usuarios a mano, la persona **solicita acceso**, el admin **aprueba** (se crea el usuario **sin permisos**) y luego le asigna permisos en Gestión de Usuarios. Dos puntos de entrada (SSO + formulario) y aviso al admin por sección + contador en la app. Ver [[taskflow-access-requests]] en memoria.
+
+**Backend:**
+- Prisma `AccessRequest` (nombre, email, cargo?, area?, justificacion?, origen 'sso'|'manual', estado 'pendiente'|'aprobada'|'rechazada', timestamps + resolved_by). `db push` aplicado a prod.
+- `accessRequestController`: `submit` (público `POST /api/access-request`, valida y evita duplicados), `list`/`approve`/`reject` (admin, gateado `is_admin||perm_users_create`). `approve` crea el usuario con todos los `perm_*` en false.
+- **SSO (`microsoftLogin`): ya NO rechaza con 403** a correos no registrados — crea una solicitud pendiente y responde `{ accessRequested: true }`. ⚠️ Cambio de comportamiento del login SSO al reiniciar Node en prod.
+
+**Frontend:**
+- `Login.jsx`: enlace+formulario "Solicitar acceso" + banner de "solicitud enviada" en SSO. Al abrir el formulario se ocultan las opciones de login (no se mezclan). Cargo/Área opcionales.
+- `AccessRequestsView.tsx`: vista admin con pendientes/todas y Aprobar/Rechazar. Entrada de sidebar gateada por `is_admin||perm_users_create` con **badge del nº pendiente**.
+- **Commits:** `0099d77` (backend), `1377fc1` (frontend), `4ed9c50` (login limpio + opcionales). Verificado e2e. ✅ En producción.
+
+### 37. Fix: no cachear index.html (login viejo tras logout/deploy)
+
+Al cerrar sesión (`window.location.href='/'`) el navegador servía un `index.html` cacheado apuntando al bundle anterior → mostraba el login viejo. Se agregó `clientCache DisableCache` para `index.html` en `frontend/public/web.config` (Vite lo copia a `dist/` en cada build); los assets con hash siguen cacheables. **Beneficia todos los despliegues futuros** (los usuarios siempre cargan la versión más reciente).
+- **Commit:** `492ab37`. Frontend puro. ✅ En producción.
+
+### 38. Quitar "Exportar Excel" de Panel y Control (centralizado en Reportes)
+
+El botón del header en Panel de Actividades y Control de Gestión duplicaba la exportación del módulo de Reportes. Se eliminó (y la función `handleExportExcel` sin uso). ⚠️ Quien no tenga permiso "Ver Reportes" ya no exporta.
+- **Commit:** `0c6fb3c`. Frontend puro. ✅ En producción.
+
+### 39. Edición en el módulo KPI (apps, sedes, incidentes, despliegues)
+
+El backend ya tenía los `PUT`; se agregó la UI de edición en `KpiView.tsx`: renombrar apps y sedes inline en sus catálogos (lápiz + guardar/cancelar), y editar incidentes y despliegues desde la tabla (lápiz → precarga el formulario en modo edición con "Guardar cambios"/"Cancelar"; `toLocalInput` precarga los datetime-local). Verificado e2e.
+- **Commit:** `02a0595`. Frontend puro. ✅ En producción.
 
 ---
 
