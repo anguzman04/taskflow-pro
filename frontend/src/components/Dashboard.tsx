@@ -1808,17 +1808,6 @@ const handleDeleteEvidence = async (evidenceId: number) => {
     saveAs(new Blob([buffer]), `${filenamePrefix}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  const handleExportExcel = () => {
-    const tasksData = currentView === 'tasks' ? filteredTasks : filteredControlTasks;
-    const parts: string[] = [];
-    if (searchTerm) parts.push(`Búsqueda: "${searchTerm}"`);
-    if (statusFilter !== 'All') parts.push(`Estado: ${statusFilter}`);
-    if (taskPriorityFilter.length > 0) parts.push(`Prioridad: ${taskPriorityFilter.map(getPriorityLabel).join(', ')}`);
-    if (taskDateFrom) parts.push(`Desde: ${taskDateFrom}`);
-    if (taskDateTo) parts.push(`Hasta: ${taskDateTo}`);
-    exportToExcelData(tasksData, 'Reporte_General', parts.length ? parts.join(' | ') : undefined);
-  };
-
   const handleExportFilteredReport = () => {
     const parts: string[] = [];
     if (reportAreaFilter.length > 0) { const names = reportAreaFilter.map(id => areas.find(x => String(x.id) === id)?.nombre).filter(Boolean); if (names.length) parts.push(`Área: ${names.join(', ')}`); }
@@ -3290,12 +3279,6 @@ case 'responsable':
                         )}
                       </AnimatePresence>
                     </div>
-                  )}
-
-                  {(currentView === 'tasks' || currentView === 'control') && (
-                    <button onClick={handleExportExcel} className="bg-emerald-600 text-white px-3 sm:px-5 py-2.5 rounded-xl font-medium flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 active:scale-95">
-                      <Download size={18} /> <span className="hidden sm:inline">Exportar Excel</span>
-                    </button>
                   )}
 
                   {canCreateInCurrentView() && currentView !== 'reports' && (
