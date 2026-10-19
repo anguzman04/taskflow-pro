@@ -2,6 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
+const accessRequestController = require('./accessRequestController');
 const prisma = new PrismaClient();
 
 // Cliente JWKS para validar tokens de Microsoft Entra ID (se crea una sola vez)
@@ -95,8 +96,12 @@ const authController = {
       });
 
       if (!user) {
-        console.warn(`[SSO] Intento de login Microsoft con cuenta no registrada: ${msEmail}`);
-        return res.status(403).json({ error: `La cuenta ${msEmail} no está registrada en TaskFlow Pro. Contacta al administrador.` });
+        // No está registrado: en vez de rechazar, registramos una solicitud de acceso
+        // pendiente (con nombre/correo ya verificados por Microsoft) para que el admin la apruebe.
+        console.warn(`[SSO] Cuenta Microsoft no registrada, se crea solicitud de acceso: ${msEmail}`);
+        try { await accessRequestController.ensurePendingFromSso(claims.name, msEmail); }
+        catch (e) { console.error('No se pudo registrar la solicitud de acceso SSO:', e.message); }
+        return res.status(200).json({ accessRequested: true, email: msEmail, message: `Tu cuenta ${msEmail} no está registrada. Se envió una solicitud de acceso al administrador.` });
       }
 
       // Los usuarios que entran por Microsoft no pasan por el cambio de contraseña local:

@@ -16,6 +16,7 @@ const noteController = require('../controllers/noteController');
 const personController = require('../controllers/personController');
 const changeControlController = require('../controllers/changeControlController');
 const kpiController = require('../controllers/kpiController');
+const accessRequestController = require('../controllers/accessRequestController');
 
 // ==========================================
 // 1. RUTAS PÚBLICAS
@@ -23,6 +24,8 @@ const kpiController = require('../controllers/kpiController');
 router.post('/login', authController.login);
 router.post('/auth/microsoft', authController.microsoftLogin);
 router.post('/change-password', authController.changePassword);
+// Solicitud de acceso pública (el formulario del login, sin token)
+router.post('/access-request', accessRequestController.submit);
 
 // ==========================================
 // 2. FILTRO DE SEGURIDAD (MIDDLEWARE)
@@ -56,6 +59,11 @@ router.get('/users', userController.getAll);
 router.post('/users', userController.create);
 router.put('/users/:id', userController.update);
 router.delete('/users/:id', userController.delete);
+
+// Solicitudes de acceso (gestión por admin)
+router.get('/access-requests', accessRequestController.list);
+router.post('/access-requests/:id/approve', accessRequestController.approve);
+router.post('/access-requests/:id/reject', accessRequestController.reject);
 
 // Áreas
 router.get('/areas', areaController.getAll);

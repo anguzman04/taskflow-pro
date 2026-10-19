@@ -341,6 +341,23 @@ model KpiDespliegue {
   app KpiApp @relation(fields: [app_id], references: [id], onDelete: Cascade)
 }
 
+// Solicitud de acceso: una persona pide ingreso y el admin la aprueba (creando
+// el usuario, sin permisos) o la rechaza. Origen 'sso' (entró con su cuenta
+// Microsoft pero no estaba registrado) o 'manual' (formulario del login).
+model AccessRequest {
+  id             Int      @id @default(autoincrement())
+  nombre         String
+  email          String
+  cargo          String?
+  area           String?
+  justificacion  String?
+  origen         String   @default("manual") // "sso" | "manual"
+  estado         String   @default("pendiente") // "pendiente" | "aprobada" | "rechazada"
+  created_at     DateTime @default(now())
+  resolved_at    DateTime?
+  resolved_by_id Int?
+}
+
 // Agrega este NUEVO MODELO al final de tu archivo schema.prisma
 model Subtask {
   id               Int      @id @default(autoincrement())
