@@ -1,6 +1,6 @@
 # STATUS.md — TaskFlow Pro
 
-_Última actualización: 2026-10-19_
+_Última actualización: 2026-10-23_
 
 ---
 
@@ -641,9 +641,40 @@ El backend ya tenía los `PUT`; se agregó la UI de edición en `KpiView.tsx`: r
 
 ---
 
+## Completado en sesión 2026-10-23
+
+### 40. Eliminar tareas (planeadas/canceladas) desde Gestión de Proyectos
+
+En el módulo de Proyectos no existía forma de eliminar una tarea desde la tarjeta del proyecto. Se agregó el botón 🗑️ en la fila de cada tarea (junto a ✏️ Editar y 👁️ Ver detalles, visible al pasar el cursor). Regla de negocio **unificada en front y back por estado**:
+
+| Estado | ¿Eliminable? |
+|---|---|
+| Planeado / Pendiente | ✅ con permiso `can_delete_tasks` o admin |
+| Cancelado | ✅ con permiso `can_delete_tasks` o admin |
+| En curso | 🚫 nadie (ni admin) |
+| Completado | 🚫 nadie (ni admin) |
+| En espera / otros | 🚫 bloqueado por defecto |
+
+Motivo: las tareas En curso/Completadas alimentan reportes y KPIs; si ya no aplican deben **cancelarse** (no borrarse) para conservar el historial. Las planeadas (nunca iniciadas) y las canceladas sí son desechables.
+
+**Backend (`taskController.js`):**
+- Nuevo helper `esEstadoEliminable()` (Pendiente/Planeado o Cancelado, tolerante a mayúsculas/variantes).
+- `delete` reescrito: (1) exige `is_admin || can_delete_tasks`; (2) bloquea con **409** los estados no eliminables **para todos, incluido admin**. Reemplaza la regla anterior basada en "progreso" (que además dejaba al admin borrar cualquier cosa y usaba `'Pendiente'` mientras el front usaba `'Planeado'`).
+
+**Frontend (`Dashboard.tsx`):**
+- Botón 🗑️ en la fila de tarea del proyecto (`handleDelete(t.id, 'tasks')`, ya trae confirmación), condicionado a `isTaskDeletable` + permiso.
+- Se alineó también el botón de borrado de la **tabla del Panel de Actividades** a la misma regla por estado (antes usaba `isTaskActive` por progreso), evitando que al admin le apareciera el botón en Completadas y luego chocara con el 409. El candado 🔒 ahora se muestra cuando se tiene permiso pero la tarea no es eliminable.
+
+**Estado:** ✅ verificado en producción (botón visible en tareas Canceladas/Planeadas). **Commit:** `88fcf96`. Front+back, sin cambios de BD ni dependencias; desplegar = `git pull` → `npm run build` (frontend) + reiniciar Node.
+
+> Nota de despliegue: un primer intento falló porque el commit quedó sin subir (el `git pull` en prod no traía nada). Lección: confirmar siempre con `git log --oneline -1` que el commit llegó al remoto antes de desplegar.
+
+---
+
 ## Deuda técnica conocida
 - Drift de migraciones Prisma: se ha usado `prisma db push` sin generar migraciones formales. Resolver con `prisma migrate resolve` o generando una migración base.
 - Backend corre con `node index.js` (sin nodemon en producción). Para dev usar `npm run dev`.
+  - **Pendiente de adoptar:** se prepararon scripts para correr el backend como **servicio de Windows (NSSM)** y que arranque solo / se reinicie al desplegar, en la carpeta `deploy/` (`install-backend-service.ps1`, `restart-backend.ps1`, `README.md`). **Aún no commiteados ni desplegados.** Requiere NSSM instalado y que `JWT_SECRET`/`DATABASE_URL`/Azure estén a nivel de **Sistema** (el servicio corre como LocalSystem).
 
 ---
 
