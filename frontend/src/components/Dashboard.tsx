@@ -2739,10 +2739,14 @@ const renderDynamicCell = (colId: string, task: any, index: number, isControlVie
     const completedSubtasks = task.subtasks?.filter((st: any) => st.completada).length || 0;
     const canView = canViewSubtasks(String(task.responsable));
     const isTaskLocked = task.estado === 'Completado' || task.estado === 'Cancelado';
-    const isTaskActive = task.estado !== 'Planeado' || task.porcentaje_avance > 0;
     const canEditTask = !!(currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked));
     const canEditControl = !!(currentUser?.is_admin || (currentUser as any)?.perm_control_edit);
-    const canDeleteTask = !!(currentUser?.is_admin || (currentUser?.can_delete_tasks && !isTaskActive));
+    // Solo se eliminan tareas planeadas (Pendiente/Planeado) o canceladas.
+    // En curso / Completadas no se eliminan (ni admin): se cancelan.
+    const estadoLc = String(task.estado || '').trim().toLowerCase();
+    const isTaskDeletable = estadoLc.startsWith('pendiente') || estadoLc.startsWith('planead') || estadoLc.startsWith('cancel');
+    const hasDeletePerm = !!(currentUser?.is_admin || currentUser?.can_delete_tasks);
+    const canDeleteTask = hasDeletePerm && isTaskDeletable;
 
     switch(colId) {
       case 'orden':
@@ -3022,7 +3026,7 @@ case 'responsable':
               <button onClick={(e) => { e.stopPropagation(); setSelectedTask(task); setDetailsTab('comments'); setIsDetailsModalOpen(true); fetchTaskDetails(task.id!); }} className="text-slate-400 hover:text-indigo-600 transition-colors" title="Ver Detalles"><Eye size={16} /></button>
               {!isControlView ? (
                 <>
-                  {canDeleteTask ? <button onClick={(e) => { e.stopPropagation(); handleDelete(task.id!, 'tasks'); }} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar Tarea"><Trash2 size={16} /></button> : (currentUser?.can_delete_tasks && isTaskActive) && <button className="text-slate-200 cursor-not-allowed"><Lock size={16} /></button>}
+                  {canDeleteTask ? <button onClick={(e) => { e.stopPropagation(); handleDelete(task.id!, 'tasks'); }} className="text-slate-400 hover:text-red-600 transition-colors" title="Eliminar Tarea"><Trash2 size={16} /></button> : (hasDeletePerm && !isTaskDeletable) && <button className="text-slate-200 cursor-not-allowed" title="Solo se eliminan tareas planeadas o canceladas"><Lock size={16} /></button>}
                 </>
 /*               ) : (
                 (currentUser?.is_admin || (currentUser as any)?.perm_control_edit) && (
@@ -3648,13 +3652,18 @@ case 'responsable':
                                       const canToggle = canToggleSubtasks(String(t.responsable));
                                       const isTaskLocked = t.estado === 'Completado' || t.estado === 'Cancelado';
                                       const canEditTask = !!(currentUser?.is_admin || (currentUser?.can_edit_tasks && !isTaskLocked));
+                                      // Solo se pueden eliminar tareas planeadas (Pendiente/Planeado) o canceladas.
+                                      // En curso / Completadas no se eliminan (ni admin): se cancelan.
+                                      const estadoLc = String(t.estado || '').trim().toLowerCase();
+                                      const isTaskDeletable = estadoLc.startsWith('pendiente') || estadoLc.startsWith('planead') || estadoLc.startsWith('cancel');
+                                      const canDeleteTaskFromProject = !!(currentUser?.is_admin || currentUser?.can_delete_tasks) && isTaskDeletable;
 
                                       return (
                                         <div key={t.id} className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-sm hover:border-blue-200 transition-colors group mb-2">
                                           <div className="flex items-center justify-between p-3">
                                             <div className="flex flex-col gap-1 w-1/3 min-w-[200px]"><span className="text-sm font-bold text-slate-800 line-clamp-1" title={t.actividad}>{t.actividad}</span><div className="flex items-center gap-2"><span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full uppercase border ${getPriorityColor(t.prioridad)}`}>{getPriorityLabel(t.prioridad)}</span><span className={`text-[10px] font-bold ${tOverdue > 0 ? 'text-red-500' : 'text-slate-400'}`}>{t.fecha_fin} {tOverdue > 0 && '??'}</span></div></div>
                                             <div className="flex-1 px-4 flex items-center gap-3 justify-center"><div className="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className={`h-full rounded-full ${getProgressBarColor(t.porcentaje_avance)}`} style={{ width: `${t.porcentaje_avance}%` }} /></div><span className={`text-[10px] font-bold w-6 text-right ${getProgressTextColor(t.porcentaje_avance)}`}>{t.porcentaje_avance}%</span></div>
-                                            <div className="flex items-center gap-4 justify-end w-1/3"><span className={`text-[9px] font-black px-2 py-1 rounded uppercase ${getStatusColor(t.estado)}`}>{t.estado}</span><div className="flex items-center gap-1.5" title={String(t.responsable)}><div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] uppercase border border-slate-200">{String(t.responsable || 'U').charAt(0)}</div><span className="text-[10px] font-bold text-slate-500 uppercase hidden sm:block w-16 truncate">{String(t.responsable || 'Usuario').split(' ')[0]}</span></div><div className="flex items-center gap-1">{canEditTask && (<button onClick={(e) => { e.stopPropagation(); setEditingItem(t); setEditingTaskFromProject(true); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Editar Tarea"><Edit2 size={16} /></button>)}<button onClick={() => { setSelectedTask(t); setDetailsTab('subtasks'); setIsDetailsModalOpen(true); fetchTaskDetails(t.id!); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Ver Detalles"><Eye size={16} /></button></div></div>
+                                            <div className="flex items-center gap-4 justify-end w-1/3"><span className={`text-[9px] font-black px-2 py-1 rounded uppercase ${getStatusColor(t.estado)}`}>{t.estado}</span><div className="flex items-center gap-1.5" title={String(t.responsable)}><div className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[10px] uppercase border border-slate-200">{String(t.responsable || 'U').charAt(0)}</div><span className="text-[10px] font-bold text-slate-500 uppercase hidden sm:block w-16 truncate">{String(t.responsable || 'Usuario').split(' ')[0]}</span></div><div className="flex items-center gap-1">{canEditTask && (<button onClick={(e) => { e.stopPropagation(); setEditingItem(t); setEditingTaskFromProject(true); setIsModalOpen(true); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Editar Tarea"><Edit2 size={16} /></button>)}<button onClick={() => { setSelectedTask(t); setDetailsTab('subtasks'); setIsDetailsModalOpen(true); fetchTaskDetails(t.id!); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Ver Detalles"><Eye size={16} /></button>{canDeleteTaskFromProject && (<button onClick={(e) => { e.stopPropagation(); handleDelete(t.id!, 'tasks'); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100" title="Eliminar tarea"><Trash2 size={16} /></button>)}</div></div>
                                           </div>
                                           {totalSubtasks > 0 && canView && (
                                             <>

@@ -11,6 +11,16 @@ const esEstadoCerrado = (estado) => {
   return s.startsWith('complet') || s.startsWith('finaliz') || s.startsWith('cancel');
 };
 
+// Estados que SÍ se pueden eliminar: tareas "planeadas" (Pendiente/Planeado,
+// aún no iniciadas) o "Canceladas". Las tareas En curso o Completadas NO se
+// pueden eliminar NUNCA (ni siquiera un admin): se cancelan para conservar el
+// historial y no afectar reportes/KPIs. "En espera" u otros estados quedan
+// fuera de la lista => bloqueados por defecto.
+const esEstadoEliminable = (estado) => {
+  const s = String(estado || '').trim().toLowerCase();
+  return s.startsWith('pendiente') || s.startsWith('planead') || s.startsWith('cancel');
+};
+
 // Registra en AuditLog el cierre de una tarea. No lanza: si falla, solo loguea.
 const registrarCierreAudit = async (taskId, userId, oldEstado, newEstado, fechaCierre) => {
   try {
@@ -574,11 +584,17 @@ fecha_registro: data.fecha_registro ? procesarFechaSegura(data.fecha_registro) :
 
       if (!task || !user) return res.status(404).json({ error: "Registro no encontrado" });
 
-      const yaInicio = task.estado !== 'Pendiente' || task.porcentaje_avance > 0;
-      
-      if (yaInicio && !user.is_admin) {
-        return res.status(403).json({ 
-          error: "🚫 AUDITORÍA: No puedes eliminar una tarea que ya tiene progreso o está completada.\n\n💡 Sugerencia: Si la tarea ya no aplica, edítala y cambia su estado a 'Cancelado' para mantener el historial." 
+      // 1. Permiso para eliminar: admin o permiso explícito can_delete_tasks.
+      if (!user.is_admin && !user.can_delete_tasks) {
+        return res.status(403).json({ error: "🚫 No tienes permiso para eliminar tareas." });
+      }
+
+      // 2. Regla de negocio (para TODOS, incluido admin): solo se eliminan tareas
+      // planeadas (Pendiente/Planeado) o Canceladas. Las En curso y Completadas
+      // no se pueden eliminar: si ya no aplican, deben cancelarse.
+      if (!esEstadoEliminable(task.estado)) {
+        return res.status(409).json({
+          error: "🚫 Solo se pueden eliminar tareas planeadas o canceladas. Una tarea En curso o Completada no se puede eliminar.\n\n💡 Si ya no aplica, edítala y cámbiala a 'Cancelado' para conservar el historial."
         });
       }
 
